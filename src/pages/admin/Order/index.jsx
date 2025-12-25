@@ -23,18 +23,18 @@ import {
     ChevronRight,
     Mail,
     Calendar,
-    User
+    User,
+    Ban
 } from 'lucide-react';
 
 // Sử dụng biến môi trường: http://localhost:5000/api/admin
 const API_ADMIN = import.meta.env.VITE_API_URL_ADMIN || 'http://localhost:5000/api/admin';
 
-// Cấu hình Trạng thái đơn hàng (Mapping từ JSON status)
+// Cấu hình Trạng thái đơn hàng MỚI (0: Pending, 1: Completed, 2: Cancelled)
 const STATUS_MAP = {
     0: { label: 'Chờ duyệt', color: 'bg-amber-50 text-amber-600 border-amber-100', icon: <Clock size={14} /> },
-    1: { label: 'Đã xác nhận', color: 'bg-blue-50 text-blue-600 border-blue-100', icon: <CheckCircle2 size={14} /> },
-    2: { label: 'Hoàn thành', color: 'bg-emerald-50 text-emerald-600 border-emerald-100', icon: <Package size={14} /> },
-    3: { label: 'Đã hủy', color: 'bg-rose-50 text-rose-600 border-rose-100', icon: <XCircle size={14} /> }
+    1: { label: 'Hoàn thành', color: 'bg-emerald-50 text-emerald-600 border-emerald-100', icon: <CheckCircle2 size={14} /> },
+    2: { label: 'Đã hủy', color: 'bg-rose-50 text-rose-600 border-rose-100', icon: <XCircle size={14} /> }
 };
 
 // Cấu hình Trạng thái thanh toán (Mapping từ JSON paymentStatus)
@@ -47,6 +47,7 @@ const PAYMENT_MAP = {
 const OrderManagement = () => {
     const [orders, setOrders] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isProcessing, setIsProcessing] = useState(false); // State để disable nút khi đang gọi API
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
 
@@ -78,7 +79,6 @@ const OrderManagement = () => {
             const result = await response.json();
 
             if (result.success) {
-                // Dựa vào JSON bạn gửi: data là mảng các đơn hàng
                 setOrders(result.data || []);
             } else {
                 showNotice(result.message || "Lỗi tải danh sách đơn hàng", "error");
@@ -94,6 +94,78 @@ const OrderManagement = () => {
     useEffect(() => {
         fetchOrders();
     }, []);
+
+    /**
+     * LOGIC DUYỆT ĐƠN HÀNG (CHECK ORDER) -> Chuyển sang Status 1 (COMPLETED)
+     */
+    const handleCheckOrder = async (orderId) => {
+        if (!window.confirm("Bạn có chắc chắn muốn duyệt đơn hàng này?")) return;
+
+        setIsProcessing(true);
+        const token = localStorage.getItem('tokenAdmin');
+        try {
+            const response = await fetch(`${API_ADMIN}/check-order/${orderId}`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+            const result = await response.json();
+
+            if (result.success) {
+                showNotice("Duyệt đơn hàng thành công!", "success");
+                // Cập nhật state local ngay lập tức (Status 0 -> 1)
+                setOrders(prev => prev.map(o => o._id === orderId ? { ...o, status: 1 } : o));
+                if (selectedOrder && selectedOrder._id === orderId) {
+                    setSelectedOrder(prev => ({ ...prev, status: 1 }));
+                }
+            } else {
+                showNotice(result.message || "Lỗi khi duyệt đơn", "error");
+            }
+        } catch (error) {
+            console.error("Lỗi API Check Order:", error);
+            showNotice("Lỗi kết nối", "error");
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    /**
+     * LOGIC HỦY ĐƠN HÀNG (CANCEL ORDER) -> Chuyển sang Status 2 (CANCELLED)
+     */
+    const handleCancelOrder = async (orderId) => {
+        if (!window.confirm("CẢNH BÁO: Bạn có chắc chắn muốn HỦY đơn hàng này không? Hành động này không thể hoàn tác.")) return;
+
+        setIsProcessing(true);
+        const token = localStorage.getItem('tokenAdmin');
+        try {
+            const response = await fetch(`${API_ADMIN}/cancel-order/${orderId}`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+            const result = await response.json();
+
+            if (result.success) {
+                showNotice("Đã hủy đơn hàng!", "success");
+                // Cập nhật state local ngay lập tức (Status -> 2)
+                setOrders(prev => prev.map(o => o._id === orderId ? { ...o, status: 2 } : o));
+                if (selectedOrder && selectedOrder._id === orderId) {
+                    setSelectedOrder(prev => ({ ...prev, status: 2 }));
+                }
+            } else {
+                showNotice(result.message || "Lỗi khi hủy đơn", "error");
+            }
+        } catch (error) {
+            console.error("Lỗi API Cancel Order:", error);
+            showNotice("Lỗi kết nối", "error");
+        } finally {
+            setIsProcessing(false);
+        }
+    };
 
     /**
      * Logic lọc dữ liệu phía Client (Search & Filter)
@@ -196,9 +268,8 @@ const OrderManagement = () => {
                         >
                             <option value="all">Mọi trạng thái</option>
                             <option value="0">Chờ duyệt</option>
-                            <option value="1">Đã xác nhận</option>
-                            <option value="2">Hoàn thành</option>
-                            <option value="3">Đã hủy</option>
+                            <option value="1">Hoàn thành</option>
+                            <option value="2">Đã hủy</option>
                         </select>
                     </div>
 
@@ -268,6 +339,18 @@ const OrderManagement = () => {
                                         </td>
                                         <td className="px-8 py-6 text-right">
                                             <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-x-2 group-hover:translate-x-0">
+                                                {/* Nút Duyệt: Chỉ hiện khi trạng thái là PENDING (0) */}
+                                                {order.status === 0 && (
+                                                    <button
+                                                        onClick={() => handleCheckOrder(order._id)}
+                                                        disabled={isProcessing}
+                                                        className="p-3 bg-white text-emerald-500 hover:text-white hover:bg-emerald-500 rounded-xl shadow-md border border-slate-100 hover:border-emerald-500 transition-all active:scale-90"
+                                                        title="Duyệt đơn (Hoàn thành)"
+                                                    >
+                                                        {isProcessing ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
+                                                    </button>
+                                                )}
+
                                                 <button
                                                     onClick={() => handleOpenDetail(order)}
                                                     className="p-3 bg-white text-slate-400 hover:text-blue-600 rounded-xl shadow-md border border-slate-100 hover:border-blue-200 transition-all active:scale-90"
@@ -275,9 +358,18 @@ const OrderManagement = () => {
                                                 >
                                                     <Eye size={18} />
                                                 </button>
-                                                <button className="p-3 bg-white text-slate-400 hover:text-rose-600 rounded-xl shadow-md border border-slate-100 hover:border-rose-200 transition-all active:scale-90" title="Xóa">
-                                                    <Trash2 size={18} />
-                                                </button>
+
+                                                {/* Nút Hủy: Chỉ hiện khi trạng thái là PENDING (0) */}
+                                                {order.status === 0 && (
+                                                    <button
+                                                        onClick={() => handleCancelOrder(order._id)}
+                                                        disabled={isProcessing}
+                                                        className="p-3 bg-white text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl shadow-md border border-slate-100 hover:border-rose-200 transition-all active:scale-90"
+                                                        title="Hủy đơn hàng"
+                                                    >
+                                                        <Trash2 size={18} />
+                                                    </button>
+                                                )}
                                             </div>
                                         </td>
                                     </tr>
@@ -298,7 +390,7 @@ const OrderManagement = () => {
                     </table>
                 </div>
 
-                {/* Pagination Footer (Dựa vào kết quả lọc tạm thời) */}
+                {/* Pagination Footer */}
                 <div className="bg-slate-50/50 px-8 py-5 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4 text-left">
                     <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
                         Hiển thị <span className="text-slate-800 font-black">{filteredOrders.length}</span> trên tổng số <span className="text-slate-800 font-black">{orders.length}</span> giao dịch
@@ -372,9 +464,16 @@ const OrderManagement = () => {
                                     </div>
                                     <div className="relative z-10 pt-4 border-t border-slate-200">
                                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 italic">Trạng thái thanh toán</p>
-                                        <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase border shadow-sm ${PAYMENT_MAP[selectedOrder.paymentStatus]?.color}`}>
-                                            {PAYMENT_MAP[selectedOrder.paymentStatus]?.label}
-                                        </span>
+                                        <div className="flex items-center justify-between">
+                                            <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase border shadow-sm ${PAYMENT_MAP[selectedOrder.paymentStatus]?.color}`}>
+                                                {PAYMENT_MAP[selectedOrder.paymentStatus]?.label}
+                                            </span>
+                                            {/* Trạng thái đơn hàng trong chi tiết */}
+                                            <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase border shadow-sm flex items-center gap-1 ${STATUS_MAP[selectedOrder.status]?.color}`}>
+                                                {STATUS_MAP[selectedOrder.status]?.icon}
+                                                {STATUS_MAP[selectedOrder.status]?.label}
+                                            </span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -396,6 +495,29 @@ const OrderManagement = () => {
                             >
                                 Đóng
                             </button>
+
+                            {/* Nút Duyệt trong Modal: Chỉ hiện nếu Pending (0) */}
+                            {selectedOrder.status === 0 && (
+                                <button
+                                    onClick={() => handleCheckOrder(selectedOrder._id)}
+                                    disabled={isProcessing}
+                                    className="px-8 py-3 bg-emerald-600 text-white rounded-xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl shadow-emerald-100 hover:bg-emerald-700 transition-all flex items-center gap-2 active:scale-95 disabled:opacity-50"
+                                >
+                                    {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />} Duyệt đơn
+                                </button>
+                            )}
+
+                            {/* Nút Hủy trong Modal: Chỉ hiện nếu Pending (0) */}
+                            {selectedOrder.status === 0 && (
+                                <button
+                                    onClick={() => handleCancelOrder(selectedOrder._id)}
+                                    disabled={isProcessing}
+                                    className="px-8 py-3 bg-rose-600 text-white rounded-xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl shadow-rose-100 hover:bg-rose-700 transition-all flex items-center gap-2 active:scale-95 disabled:opacity-50"
+                                >
+                                    {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <Ban size={16} />} Hủy đơn
+                                </button>
+                            )}
+
                             <button className="px-10 py-3 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all flex items-center gap-3 active:scale-95">
                                 <Printer size={18} /> In hóa đơn
                             </button>

@@ -33,6 +33,8 @@ import PackagesPage from '../pages/client/Packages/index.jsx';
 import PersonalTrainerPage from '../pages/client/PersonalTrainer/index.jsx';
 import LoginPage from '../pages/client/Login/index.jsx';
 import RegisterPage from '../pages/client/Register/index.jsx';
+import ClientProfile from '../pages/client/Profile/index.jsx';
+
 // import NotFound from '../pages/NotFound';
 
 export default function Router() {
@@ -116,7 +118,8 @@ export default function Router() {
             children: [
                 { path: '', element: <HomePage /> },
                 { path: 'packages', element: <PackagesPage /> },
-                { path: 'pt', element: <PersonalTrainerPage /> }
+                { path: 'pt', element: <PersonalTrainerPage /> },
+                { path: 'profile', element: <ClientProfile /> }
             ]
         },
 

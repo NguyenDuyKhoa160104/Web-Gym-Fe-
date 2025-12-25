@@ -89,7 +89,7 @@ const LoginPage = () => {
                 // Chuyển hướng sau 1.2 giây
                 setTimeout(() => {
                     navigate('/');
-                }, 1200);
+                });
             } else {
                 setMessage({ text: result.message || 'Email hoặc mật khẩu không đúng', isError: true });
                 setLoading(false);

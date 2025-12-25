@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 
 /**
@@ -7,6 +7,8 @@ import { Loader2 } from 'lucide-react';
  * Tích hợp logic tự động kiểm tra đăng nhập (Auth Guard)
  */
 export const CoachLoginPage = () => {
+  const navigate = useNavigate();
+
   // --- States ---
   const [formData, setFormData] = useState({
     coach_id: '',
@@ -43,7 +45,7 @@ export const CoachLoginPage = () => {
 
         if (data.success) {
           // Nếu đã đăng nhập thành công, đẩy thẳng vào dashboard
-          window.location.href = '/coach/dashboard';
+          navigate('/coach/dashboard');
         } else {
           // Token không hợp lệ thì xóa đi và cho phép ở lại trang login
           localStorage.removeItem('tokenCoach');
@@ -57,7 +59,7 @@ export const CoachLoginPage = () => {
     };
 
     checkIsLoggedIn();
-  }, []);
+  }, [navigate]);
 
   // --- Handlers ---
 
@@ -100,16 +102,15 @@ export const CoachLoginPage = () => {
         throw new Error(data.message || 'Đăng nhập thất bại. Vui lòng kiểm tra lại.');
       }
 
-      setSuccessMessage('Đăng nhập thành công! Đang chuyển hướng...');
+      setSuccessMessage('Đăng nhập thành công!');
 
       if (data.token) {
         localStorage.setItem('tokenCoach', data.token);
         localStorage.setItem('dataCoach', JSON.stringify(data.coach));
       }
 
-      setTimeout(() => {
-        window.location.href = '/coach/dashboard';
-      }, 1500);
+      // Chuyển hướng ngay lập tức, không cần đợi
+      navigate('/coach/dashboard');
 
     } catch (err) {
       setErrorMessage(err.message);
@@ -249,7 +250,7 @@ export const CoachLoginPage = () => {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  {successMessage ? 'Đang vào hệ thống...' : 'Đang kiểm tra...'}
+                  {successMessage ? 'Đang chuyển hướng...' : 'Đang kiểm tra...'}
                 </div>
               ) : (
                 <>

@@ -89,7 +89,7 @@ const AdminLoginPage = () => {
         // Điều hướng đến dashboard sau 1.5 giây để người dùng kịp thấy thông báo
         setTimeout(() => {
           navigate('/admin/dashboard');
-        }, 1500);
+        });
       } else {
         setMessage({ text: result.message || 'Thông tin quản trị không chính xác', isError: true });
         setLoading(false);

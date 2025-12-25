@@ -3,7 +3,7 @@ import {
     Search, Plus, Filter, Edit, Trash2, X,
     Dumbbell, Activity, Flower, UploadCloud,
     MapPin, Users, PenTool, CheckCircle, AlertTriangle,
-    Loader2, Info, Save, Lock, Unlock, Wrench, AlertCircle
+    Loader2, Info, Save, Lock, Unlock, Wrench, AlertCircle, Image as ImageIcon
 } from 'lucide-react';
 
 /**
@@ -72,6 +72,7 @@ const RoomManagement = () => {
         name: '',
         capacity: '',
         description: '',
+        image: '', // Thêm trường image
         status: ROOM_STATUS.AVAILABLE // Default value
     });
 
@@ -162,7 +163,8 @@ const RoomManagement = () => {
                 body: JSON.stringify({
                     name: formData.name,
                     capacity: formData.capacity,
-                    description: formData.description
+                    description: formData.description,
+                    image: formData.image // Thêm cập nhật ảnh
                 })
             });
 
@@ -327,7 +329,7 @@ const RoomManagement = () => {
 
     // --- Handlers UI ---
     const openAddModal = () => {
-        setFormData({ name: '', capacity: '', description: '', status: ROOM_STATUS.AVAILABLE });
+        setFormData({ name: '', capacity: '', description: '', image: '', status: ROOM_STATUS.AVAILABLE });
         setShowAddModal(true);
     };
 
@@ -337,6 +339,7 @@ const RoomManagement = () => {
             name: room.name,
             capacity: room.capacity,
             description: room.description || '',
+            image: room.image || '', // Load ảnh hiện tại nếu có
             status: room.status
         });
         setShowEditModal(true);
@@ -428,7 +431,7 @@ const RoomManagement = () => {
                             <div key={room._id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden hover:shadow-md transition-all group flex flex-col relative">
                                 {/* Image & Status Badge */}
                                 <div className="h-48 bg-slate-100 relative group-hover:opacity-95 transition-opacity">
-                                    <img src={getRandomImage(room._id)} alt={room.name} className="w-full h-full object-cover" />
+                                    <img src={room.image || getRandomImage(room._id)} alt={room.name} className="w-full h-full object-cover" />
                                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
                                     {getStatusBadge(room.status)}
 
@@ -438,8 +441,8 @@ const RoomManagement = () => {
                                         <button
                                             onClick={(e) => { e.stopPropagation(); handleMaintain(room); }}
                                             className={`p-2 rounded-full shadow-lg backdrop-blur-sm transition-transform active:scale-90 ${room.status === ROOM_STATUS.MAINTENANCE
-                                                    ? 'bg-orange-500 text-white'
-                                                    : 'bg-white/20 text-white hover:bg-orange-500'
+                                                ? 'bg-orange-500 text-white'
+                                                : 'bg-white/20 text-white hover:bg-orange-500'
                                                 }`}
                                             title="Bảo trì"
                                         >
@@ -450,8 +453,8 @@ const RoomManagement = () => {
                                         <button
                                             onClick={(e) => { e.stopPropagation(); handleQuickLock(room); }}
                                             className={`p-2 rounded-full shadow-lg backdrop-blur-sm transition-transform active:scale-90 ${room.status === ROOM_STATUS.AVAILABLE
-                                                    ? 'bg-white/20 text-white hover:bg-white hover:text-green-600'
-                                                    : 'bg-red-500 text-white hover:bg-red-600'
+                                                ? 'bg-white/20 text-white hover:bg-white hover:text-green-600'
+                                                : 'bg-red-500 text-white hover:bg-red-600'
                                                 }`}
                                             title={room.status === ROOM_STATUS.AVAILABLE ? 'Khóa phòng' : 'Mở khóa'}
                                         >
@@ -551,6 +554,33 @@ const RoomManagement = () => {
                                 </div>
 
                                 <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Hình ảnh (URL)</label>
+                                    <div className="relative">
+                                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                            <ImageIcon size={16} className="text-slate-400" />
+                                        </div>
+                                        <input
+                                            type="url"
+                                            name="image"
+                                            value={formData.image}
+                                            onChange={handleFormChange}
+                                            className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 font-medium text-slate-700 outline-none transition-all"
+                                            placeholder="https://example.com/image.jpg"
+                                        />
+                                    </div>
+                                    {formData.image && (
+                                        <div className="mt-3 h-32 w-full rounded-xl overflow-hidden bg-slate-100 border border-slate-200">
+                                            <img
+                                                src={formData.image}
+                                                alt="Preview"
+                                                className="w-full h-full object-cover"
+                                                onError={(e) => { e.target.src = "https://placehold.co/600x400?text=Invalid+Image"; }}
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div>
                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Sức chứa (Người) <span className="text-red-500">*</span></label>
                                     <input
                                         type="number"
@@ -619,6 +649,33 @@ const RoomManagement = () => {
                                         onChange={handleFormChange}
                                         className="w-full px-4 py-3 rounded-xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 outline-none"
                                     />
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Hình ảnh (URL)</label>
+                                    <div className="relative">
+                                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                            <ImageIcon size={16} className="text-slate-400" />
+                                        </div>
+                                        <input
+                                            type="url"
+                                            name="image"
+                                            value={formData.image}
+                                            onChange={handleFormChange}
+                                            className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-50 border-none focus:ring-2 focus:ring-blue-500 font-medium text-slate-700 outline-none transition-all"
+                                            placeholder="https://example.com/image.jpg"
+                                        />
+                                    </div>
+                                    {formData.image && (
+                                        <div className="mt-3 h-32 w-full rounded-xl overflow-hidden bg-slate-100 border border-slate-200">
+                                            <img
+                                                src={formData.image}
+                                                alt="Preview"
+                                                className="w-full h-full object-cover"
+                                                onError={(e) => { e.target.src = "https://placehold.co/600x400?text=Invalid+Image"; }}
+                                            />
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div>
