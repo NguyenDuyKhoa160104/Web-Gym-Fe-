@@ -69,12 +69,12 @@ const Sidebar = ({ isOpen, activeTab }) => {
                     active={activeTab === 'coaches'}
                     to="/admin/coaches"
                 />
-                <SidebarItem
+                {/* <SidebarItem
                     icon={Calendar}
                     label={isOpen ? "Lịch Tập" : ""}
                     active={activeTab === 'schedule'}
                     to="/admin/schedule"
-                />
+                /> */}
 
                 <SidebarItem
                     icon={Package}
