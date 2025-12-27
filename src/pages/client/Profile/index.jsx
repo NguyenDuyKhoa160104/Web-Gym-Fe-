@@ -23,28 +23,30 @@ import {
     AlertCircle,
     X,
     Check,
-    AlertTriangle
+    AlertTriangle,
+    Package,
+    Star,
+    MessageSquare
 } from 'lucide-react';
 
 // --- HELPER: API CONFIG ---
 const getApiUrl = () => {
     try {
         if (typeof import.meta !== 'undefined' && import.meta.env) {
-            // Biến môi trường đã bao gồm /api/client
             return import.meta.env.VITE_API_URL_CLIENT || "http://localhost:5000/api/client";
         }
     } catch (e) { }
-    // Fallback mặc định cũng trỏ thẳng vào endpoint client
     return "http://localhost:5000/api/client";
 };
 
 const API_URL = getApiUrl();
 
-// --- MOCK DATA (Giữ lại cho các phần chưa có API Backend) ---
-const BOOKING_HISTORY = [
-    { id: 1, name: "Gói 12 Tháng (VIP)", date: "20/11/2025", price: "4.500.000đ", status: "Active", expire: "20/11/2026" },
-    { id: 2, name: "Gói 3 Tháng (Cơ bản)", date: "15/08/2025", price: "1.200.000đ", status: "Expired", expire: "15/11/2025" },
-];
+// --- CONSTANTS ---
+const ORDER_STATUS = {
+    PENDING: 0,
+    COMPLETED: 1,
+    CANCELLED: 2
+};
 
 const UPCOMING_CLASSES = [
     { id: 1, name: "Yoga Cơ Bản", time: "07:00 - 08:00", date: "Hôm nay", instructor: "Cô Lan", room: "Studio 1" },
@@ -69,9 +71,9 @@ const Toast = ({ message, type, onClose }) => {
     }, [onClose]);
 
     return (
-        <div className={`fixed top-4 right-4 z-50 flex items-center gap-3 px-6 py-4 rounded-xl shadow-2xl animate-in slide-in-from-right duration-300 border ${type === 'success'
-                ? 'bg-green-900/90 text-green-100 border-green-700'
-                : 'bg-red-900/90 text-red-100 border-red-700'
+        <div className={`fixed top-4 right-4 z-[100] flex items-center gap-3 px-6 py-4 rounded-xl shadow-2xl animate-in slide-in-from-right duration-300 border ${type === 'success'
+            ? 'bg-green-900/90 text-green-100 border-green-700'
+            : 'bg-red-900/90 text-red-100 border-red-700'
             }`}>
             {type === 'success' ? <Check size={20} /> : <AlertTriangle size={20} />}
             <span className="font-medium">{message}</span>
@@ -103,11 +105,20 @@ const CustomerProfile = ({ onBack }) => {
     const [error, setError] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
 
+    // History State
+    const [bookingHistory, setBookingHistory] = useState([]);
+    const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
     // UI State for Modals/Toasts
-    const [notification, setNotification] = useState(null); // { message, type }
+    const [notification, setNotification] = useState(null);
     const [showLogoutModal, setShowLogoutModal] = useState(false);
     const [showAvatarModal, setShowAvatarModal] = useState(false);
     const [tempAvatarUrl, setTempAvatarUrl] = useState('');
+
+    // Review State
+    const [showReviewModal, setShowReviewModal] = useState(false);
+    const [reviewData, setReviewData] = useState({ packageId: '', packageName: '', rating: 5, comment: '' });
+    const [isSubmittingReview, setIsSubmittingReview] = useState(false);
 
     // Form state
     const [formData, setFormData] = useState({
@@ -121,9 +132,25 @@ const CustomerProfile = ({ onBack }) => {
         target: ''
     });
 
-    // Helper to show notification
     const notify = (message, type = 'success') => {
         setNotification({ message, type });
+    };
+
+    // --- HELPER FUNCTIONS ---
+    const formatCurrency = (amount) => {
+        return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
+    };
+
+    const formatDate = (dateString) => {
+        if (!dateString) return 'N/A';
+        return new Date(dateString).toLocaleDateString('vi-VN');
+    };
+
+    const calculateExpiry = (orderDate, durationDays) => {
+        if (!orderDate || !durationDays) return null;
+        const date = new Date(orderDate);
+        date.setDate(date.getDate() + durationDays);
+        return date;
     };
 
     // --- 1. FETCH PROFILE DATA ---
@@ -134,10 +161,7 @@ const CustomerProfile = ({ onBack }) => {
 
             try {
                 const token = localStorage.getItem('tokenClient');
-                if (!token) {
-                    // Silent fail or redirect handled by parent usually
-                }
-
+                // Gọi API không cần ID params (dựa trên cấu hình trước đó)
                 const response = await fetch(`${API_URL}/my-profile`, {
                     method: 'GET',
                     headers: {
@@ -152,7 +176,6 @@ const CustomerProfile = ({ onBack }) => {
 
                 if (response.ok && result.success) {
                     setUserData(result.data);
-
                     setFormData({
                         fullname: result.data.fullname || '',
                         phone: result.data.phone || '',
@@ -167,38 +190,8 @@ const CustomerProfile = ({ onBack }) => {
                     throw new Error(result.message || "Lỗi API");
                 }
             } catch (err) {
-                console.warn("Đang sử dụng dữ liệu mẫu do lỗi kết nối:", err);
-                setError("Không thể kết nối Server. Đang hiển thị chế độ xem trước.");
-
-                // --- FALLBACK MOCK DATA ---
-                const mockData = {
-                    _id: "694d4addcea94596301f14c1",
-                    fullname: "Nguyễn Văn A (Demo)",
-                    email: "client1@gmail.com",
-                    phone: "0901234567",
-                    address: "TP. Hồ Chí Minh",
-                    date_of_birth: "1995-01-01",
-                    gender: "Nam",
-                    avatar_url: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=200&auto=format&fit=crop",
-                    status: 1,
-                    health_info: {
-                        height: 175,
-                        weight: 70,
-                        target: "Tăng cơ"
-                    }
-                };
-                setUserData(mockData);
-                setFormData({
-                    fullname: mockData.fullname,
-                    phone: mockData.phone,
-                    address: mockData.address,
-                    date_of_birth: mockData.date_of_birth,
-                    gender: mockData.gender,
-                    height: mockData.health_info.height,
-                    weight: mockData.health_info.weight,
-                    target: mockData.health_info.target
-                });
-
+                console.warn("Fetch profile error:", err);
+                setError("Không thể kết nối Server. Vui lòng thử lại.");
             } finally {
                 setLoading(false);
             }
@@ -207,6 +200,38 @@ const CustomerProfile = ({ onBack }) => {
         fetchProfile();
     }, []);
 
+    // --- 1.1 FETCH HISTORY DATA ---
+    useEffect(() => {
+        if (activeTab === 'history' && userData?._id) {
+            const fetchHistory = async () => {
+                setIsLoadingHistory(true);
+                try {
+                    const token = localStorage.getItem('tokenClient');
+                    // API yêu cầu method POST và id trên URL theo đề bài
+                    const response = await fetch(`${API_URL}/my-orders/${userData._id}`, {
+                        method: 'GET',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    const result = await response.json();
+                    if (result.success) {
+                        // Sắp xếp đơn mới nhất lên đầu
+                        const sortedData = (result.data || []).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+                        setBookingHistory(sortedData);
+                    }
+                } catch (err) {
+                    console.error("Fetch history error:", err);
+                    notify("Không thể tải lịch sử đơn hàng", "error");
+                } finally {
+                    setIsLoadingHistory(false);
+                }
+            };
+            fetchHistory();
+        }
+    }, [activeTab, userData]);
+
     // --- 2. UPDATE PROFILE HANDLER ---
     const handleUpdateProfile = async (e) => {
         e.preventDefault();
@@ -214,24 +239,6 @@ const CustomerProfile = ({ onBack }) => {
 
         try {
             const token = localStorage.getItem('tokenClient');
-
-            // Mock Update
-            if (error) {
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                notify("Đã cập nhật thông tin (Chế độ xem trước)", "success");
-                setUserData(prev => ({
-                    ...prev,
-                    ...formData,
-                    health_info: {
-                        height: Number(formData.height),
-                        weight: Number(formData.weight),
-                        target: formData.target
-                    }
-                }));
-                setIsSaving(false);
-                return;
-            }
-
             const payload = {
                 fullname: formData.fullname,
                 phone: formData.phone,
@@ -258,15 +265,11 @@ const CustomerProfile = ({ onBack }) => {
 
             if (response.ok && result.success) {
                 notify("Cập nhật thông tin thành công!", "success");
-                setUserData(prev => ({
-                    ...prev,
-                    ...result.data
-                }));
+                setUserData(prev => ({ ...prev, ...result.data }));
             } else {
                 notify(result.message || "Cập nhật thất bại.", "error");
             }
         } catch (err) {
-            console.error("Update error:", err);
             notify("Lỗi kết nối đến máy chủ.", "error");
         } finally {
             setIsSaving(false);
@@ -280,17 +283,8 @@ const CustomerProfile = ({ onBack }) => {
     };
 
     const handleAvatarSubmit = async () => {
-        // Mock update
-        if (error) {
-            setUserData(prev => ({ ...prev, avatar_url: tempAvatarUrl }));
-            notify("Đã đổi ảnh đại diện (Chế độ xem trước)", "success");
-            setShowAvatarModal(false);
-            return;
-        }
-
         try {
             const token = localStorage.getItem('tokenClient');
-
             const response = await fetch(`${API_URL}/update-avatar`, {
                 method: 'POST',
                 headers: {
@@ -308,26 +302,60 @@ const CustomerProfile = ({ onBack }) => {
                 notify(result.message, "error");
             }
         } catch (err) {
-            console.error(err);
             notify("Lỗi khi cập nhật ảnh đại diện", "error");
         }
     };
 
-    // --- 4. LOGOUT HANDLER ---
+    // --- 4. REVIEW HANDLER ---
+    const openReviewModal = (packageId, packageName) => {
+        setReviewData({ packageId, packageName, rating: 5, comment: '' });
+        setShowReviewModal(true);
+    };
+
+    const submitReview = async () => {
+        if (!userData?._id) return;
+        setIsSubmittingReview(true);
+        try {
+            const token = localStorage.getItem('tokenClient');
+            const response = await fetch(`${API_URL}/review-package/${userData._id}`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    packageId: reviewData.packageId,
+                    rating: reviewData.rating,
+                    comment: reviewData.comment
+                })
+            });
+
+            const result = await response.json();
+
+            if (response.ok && result.success) {
+                notify("Gửi đánh giá thành công! Cảm ơn bạn.", "success");
+                setShowReviewModal(false);
+            } else {
+                notify(result.message || "Không thể gửi đánh giá.", "error");
+            }
+        } catch (err) {
+            console.error(err);
+            notify("Lỗi kết nối khi gửi đánh giá.", "error");
+        } finally {
+            setIsSubmittingReview(false);
+        }
+    };
+
+    // --- 5. LOGOUT HANDLER ---
     const handleLogout = () => {
         setShowLogoutModal(true);
     };
 
     const confirmLogout = () => {
-        // Xóa token và thông tin liên quan
         localStorage.removeItem('tokenClient');
         localStorage.removeItem('clientId');
         localStorage.removeItem('user');
-
-        // Đóng modal
         setShowLogoutModal(false);
-
-        // Chuyển hướng thẳng về trang đăng nhập
         window.location.href = '/login';
     };
 
@@ -336,8 +364,8 @@ const CustomerProfile = ({ onBack }) => {
         <button
             onClick={() => setActiveTab(id)}
             className={`flex items-center gap-3 w-full p-4 rounded-xl transition-all duration-300 ${activeTab === id
-                    ? 'bg-red-600 text-white shadow-lg shadow-red-900/50'
-                    : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                ? 'bg-red-600 text-white shadow-lg shadow-red-900/50'
+                : 'text-gray-400 hover:bg-gray-800 hover:text-white'
                 }`}
         >
             <Icon size={20} />
@@ -377,6 +405,61 @@ const CustomerProfile = ({ onBack }) => {
                     onClose={() => setNotification(null)}
                 />
             )}
+
+            {/* Review Modal */}
+            <Modal isOpen={showReviewModal} title="Đánh giá gói tập" onClose={() => setShowReviewModal(false)}>
+                <div className="space-y-4">
+                    <p className="text-sm text-gray-300">
+                        Bạn cảm thấy thế nào về gói tập <strong className="text-red-500">{reviewData.packageName}</strong>?
+                    </p>
+
+                    {/* Star Rating */}
+                    <div className="flex justify-center gap-2 py-2">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                            <button
+                                key={star}
+                                type="button"
+                                onClick={() => setReviewData(prev => ({ ...prev, rating: star }))}
+                                className="transition-transform hover:scale-110 focus:outline-none"
+                            >
+                                <Star
+                                    size={32}
+                                    className={`${star <= reviewData.rating ? 'fill-yellow-500 text-yellow-500' : 'text-gray-600'}`}
+                                />
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="text-center text-xs font-bold text-yellow-500 uppercase tracking-widest mb-2">
+                        {reviewData.rating === 5 ? 'Tuyệt vời!' : reviewData.rating === 4 ? 'Rất tốt' : reviewData.rating === 3 ? 'Bình thường' : reviewData.rating === 2 ? 'Tệ' : 'Rất tệ'}
+                    </div>
+
+                    <textarea
+                        value={reviewData.comment}
+                        onChange={(e) => setReviewData(prev => ({ ...prev, comment: e.target.value }))}
+                        placeholder="Chia sẻ trải nghiệm của bạn (tùy chọn)..."
+                        rows="4"
+                        className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-red-600 resize-none text-sm"
+                    />
+
+                    <div className="flex justify-end gap-3 mt-4">
+                        <button
+                            onClick={() => setShowReviewModal(false)}
+                            className="px-4 py-2 rounded-lg border border-gray-700 text-gray-300 hover:bg-gray-800 text-sm font-bold uppercase"
+                        >
+                            Hủy
+                        </button>
+                        <button
+                            onClick={submitReview}
+                            disabled={isSubmittingReview}
+                            className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 text-sm font-bold uppercase shadow-lg shadow-red-900/20 flex items-center gap-2"
+                        >
+                            {isSubmittingReview && <Loader2 className="animate-spin" size={14} />}
+                            Gửi đánh giá
+                        </button>
+                    </div>
+                </div>
+            </Modal>
 
             {/* Avatar Modal */}
             <Modal isOpen={showAvatarModal} title="Đổi ảnh đại diện" onClose={() => setShowAvatarModal(false)}>
@@ -435,13 +518,6 @@ const CustomerProfile = ({ onBack }) => {
                     <ChevronRight size={20} className="rotate-180 mr-1 group-hover:-translate-x-1 transition-transform" />
                     Quay lại trang chủ
                 </button>
-
-                {error && (
-                    <div className="bg-red-900/20 border border-red-900 text-red-400 p-3 rounded-xl mb-6 flex items-center gap-3 text-sm animate-pulse">
-                        <AlertCircle size={16} />
-                        <span>{error} - Đang hiển thị dữ liệu mẫu để demo.</span>
-                    </div>
-                )}
 
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
 
@@ -578,35 +654,103 @@ const CustomerProfile = ({ onBack }) => {
                                 </div>
                             )}
 
-                            {/* 2. HISTORY TAB */}
+                            {/* 2. HISTORY TAB - REVISED */}
                             {activeTab === 'history' && (
                                 <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                                     <h3 className="text-2xl font-black uppercase text-white flex items-center gap-3">
                                         <History className="text-red-600" /> Lịch sử giao dịch
                                     </h3>
-                                    <div className="space-y-4">
-                                        {BOOKING_HISTORY.map((item) => (
-                                            <div key={item.id} className="bg-black/40 p-5 rounded-2xl border border-gray-800 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:border-red-600/50 transition-colors">
-                                                <div className="flex items-start gap-4">
-                                                    <div className="p-3 bg-gray-800 rounded-xl text-red-500">
-                                                        <CreditCard size={24} />
-                                                    </div>
-                                                    <div>
-                                                        <h4 className="font-bold text-white text-lg">{item.name}</h4>
-                                                        <p className="text-sm text-gray-400 mt-1">Ngày đăng ký: {item.date}</p>
-                                                        <p className="text-xs text-gray-500 mt-1">Hết hạn: {item.expire}</p>
-                                                    </div>
+
+                                    {isLoadingHistory ? (
+                                        <div className="flex justify-center py-10">
+                                            <Loader2 className="animate-spin text-red-600" size={32} />
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-4">
+                                            {bookingHistory.length > 0 ? (
+                                                bookingHistory.map((order) => {
+                                                    // Determine Status Label and Class
+                                                    let statusLabel = 'Không xác định';
+                                                    let statusClass = 'bg-gray-700/50 text-gray-500 border-gray-700';
+
+                                                    if (order.status === ORDER_STATUS.PENDING) {
+                                                        statusLabel = 'Chờ duyệt';
+                                                        statusClass = 'bg-yellow-500/10 text-yellow-500 border border-yellow-500/20';
+                                                    } else if (order.status === ORDER_STATUS.CANCELLED) {
+                                                        statusLabel = 'Đã hủy';
+                                                        statusClass = 'bg-red-500/10 text-red-500 border border-red-500/20';
+                                                    } else if (order.status === ORDER_STATUS.COMPLETED) {
+                                                        statusLabel = 'Hoàn thành';
+                                                        statusClass = 'bg-green-500/10 text-green-500 border border-green-500/20';
+                                                    }
+
+                                                    return (
+                                                        <div key={order._id} className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden mb-4">
+                                                            {/* Order Header */}
+                                                            <div className="p-4 bg-gray-800/50 flex flex-wrap justify-between items-center gap-4 border-b border-gray-800">
+                                                                <div className="flex items-center gap-3">
+                                                                    <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${statusClass}`}>
+                                                                        {statusLabel}
+                                                                    </div>
+                                                                    <span className="text-xs text-gray-500">#{order._id.substring(0, 8)}</span>
+                                                                    <span className="text-xs text-gray-500">• {formatDate(order.orderDate)}</span>
+                                                                </div>
+                                                                <div className="font-black text-white">{formatCurrency(order.totalAmount)}</div>
+                                                            </div>
+
+                                                            {/* Package List */}
+                                                            <div className="p-4 space-y-3">
+                                                                {order.details && order.details.length > 0 ? (
+                                                                    order.details.map((detail, index) => {
+                                                                        const packageName = detail.package?.name || `Gói tập ${detail.durationAtPurchase} ngày`;
+                                                                        const packageId = detail.package?._id;
+                                                                        const expiryDate = calculateExpiry(order.orderDate, detail.durationAtPurchase);
+
+                                                                        return (
+                                                                            <div key={index} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-3 rounded-xl bg-black/20 hover:bg-black/40 transition-colors border border-gray-800/50">
+                                                                                <div className="flex items-start gap-3">
+                                                                                    <div className="p-2 bg-gray-800 rounded-lg text-red-500 shrink-0">
+                                                                                        <Dumbbell size={20} />
+                                                                                    </div>
+                                                                                    <div>
+                                                                                        <h4 className="font-bold text-white text-sm">{packageName}</h4>
+                                                                                        <p className="text-xs text-gray-400 mt-0.5">Thời hạn: {detail.durationAtPurchase} ngày</p>
+                                                                                        {expiryDate && (
+                                                                                            <p className="text-xs text-gray-500">Hết hạn: {formatDate(expiryDate)}</p>
+                                                                                        )}
+                                                                                    </div>
+                                                                                </div>
+
+                                                                                {/* Action Buttons */}
+                                                                                {order.status === ORDER_STATUS.COMPLETED && packageId && (
+                                                                                    <button
+                                                                                        onClick={() => openReviewModal(packageId, packageName)}
+                                                                                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500 hover:text-black transition-all text-xs font-bold uppercase tracking-wide shrink-0 border border-yellow-500/20 hover:border-transparent"
+                                                                                    >
+                                                                                        <Star size={14} />
+                                                                                        Đánh giá
+                                                                                    </button>
+                                                                                )}
+                                                                            </div>
+                                                                        )
+                                                                    })
+                                                                ) : (
+                                                                    <div className="text-center text-xs text-gray-500 italic py-2">
+                                                                        Chi tiết gói tập đang cập nhật...
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })
+                                            ) : (
+                                                <div className="text-center py-10 text-gray-500">
+                                                    <History size={48} className="mx-auto mb-4 opacity-50" />
+                                                    <p>Bạn chưa có lịch sử giao dịch nào.</p>
                                                 </div>
-                                                <div className="text-right flex flex-row md:flex-col justify-between items-center md:items-end">
-                                                    <div className="font-black text-xl text-white">{item.price}</div>
-                                                    <div className={`mt-1 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${item.status === 'Active' ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 'bg-gray-700/50 text-gray-500'
-                                                        }`}>
-                                                        {item.status}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             )}
 

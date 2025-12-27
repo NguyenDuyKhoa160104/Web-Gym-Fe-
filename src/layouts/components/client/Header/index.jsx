@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LogOut, User, ChevronDown } from 'lucide-react';
+import { LogOut, User, ChevronDown, Search, Loader2 } from 'lucide-react';
 
 const API_URL = "http://localhost:5000/api/client";
 
@@ -10,6 +10,11 @@ const Header = () => {
     const [isProfileOpen, setIsProfileOpen] = useState(false);
     const [clientData, setClientData] = useState(null);
     const [isLoginned, setIsLoginned] = useState(false);
+
+    // --- Search States ---
+    const [searchQuery, setSearchQuery] = useState('');
+    const [searchType, setSearchType] = useState('package'); // Default type matching backend
+    const [isSearching, setIsSearching] = useState(false);
 
     const location = useLocation();
     const navigate = useNavigate();
@@ -96,6 +101,58 @@ const Header = () => {
         navigate('/login');
     };
 
+    // --- SEARCH LOGIC ---
+    const handleSearch = async (e) => {
+        e.preventDefault();
+        if (!searchQuery.trim()) return;
+
+        if (!isLoginned) {
+            // Optional: Redirect to login or show generic alert
+            alert("Vui lòng đăng nhập để sử dụng tính năng tìm kiếm.");
+            navigate('/login');
+            return;
+        }
+
+        setIsSearching(true);
+        try {
+            const token = localStorage.getItem('tokenClient');
+            const response = await fetch(`${API_URL}/search`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    type: searchType,
+                    query: searchQuery,
+                    page: 1,
+                    limit: 10
+                })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                // Navigate to results page with data in state
+                navigate('/search-results', {
+                    state: {
+                        results: result.data,
+                        query: searchQuery,
+                        type: searchType
+                    }
+                });
+                setMobileMenuOpen(false);
+            } else {
+                alert(result.message || "Tìm kiếm thất bại");
+            }
+        } catch (error) {
+            console.error("Search Error:", error);
+            alert("Lỗi kết nối khi tìm kiếm");
+        } finally {
+            setIsSearching(false);
+        }
+    };
+
     const navLinks = [
         { to: '/', text: 'Trang chủ' },
         { to: '/packages', text: 'Gói tập' },
@@ -119,7 +176,7 @@ const Header = () => {
         <nav className={`fixed w-full z-50 transition-all duration-300 ${navBg ? 'bg-gray-900 shadow-lg bg-opacity-95 border-b border-gray-800' : 'bg-transparent'}`} id="navbar">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex items-center justify-between h-20">
-                    <Link to="/" className="flex-shrink-0 cursor-pointer" onClick={() => setMobileMenuOpen(false)}>
+                    <Link to="/" className="flex-shrink-0 cursor-pointer flex items-center gap-1" onClick={() => setMobileMenuOpen(false)}>
                         <span className="text-3xl font-bold text-red-500 brand-font italic">HD</span>
                         <span className="text-3xl font-bold text-white brand-font italic">FITNESS</span>
                     </Link>
@@ -130,17 +187,46 @@ const Header = () => {
                                 <Link key={link.to} to={link.to} className={getLinkClass(link.to)}>{link.text}</Link>
                             ))}
 
+                            {/* --- DESKTOP SEARCH BAR --- */}
+                            <form onSubmit={handleSearch} className="relative ml-2 flex items-center bg-gray-800/50 rounded-full border border-gray-700 focus-within:ring-1 focus-within:ring-red-600 transition-all overflow-hidden group">
+                                <select
+                                    value={searchType}
+                                    onChange={(e) => setSearchType(e.target.value)}
+                                    className="bg-transparent text-xs text-gray-400 font-medium py-2 pl-3 pr-1 outline-none border-r border-gray-700 cursor-pointer hover:text-white transition-colors bg-gray-900 appearance-none"
+                                    style={{ textAlignLast: 'center' }}
+                                >
+                                    <option value="package">Gói tập</option>
+                                    <option value="coach">HLV</option>
+                                    <option value="post">Bài viết</option>
+                                    <option value="room">Phòng</option>
+                                </select>
+                                <input
+                                    type="text"
+                                    placeholder="Tìm kiếm..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="bg-transparent text-gray-300 text-sm pl-3 pr-8 py-1.5 focus:outline-none w-32 lg:w-48 placeholder-gray-500"
+                                />
+                                <button
+                                    type="submit"
+                                    disabled={isSearching}
+                                    className="absolute right-2 text-gray-500 hover:text-red-500 transition-colors"
+                                >
+                                    {isSearching ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+                                </button>
+                            </form>
+
                             {/* HIỂN THỊ DỰA TRÊN TRẠNG THÁI ĐĂNG NHẬP */}
                             {isLoginned ? (
-                                <div className="relative ml-4" ref={dropdownRef}>
+                                <div className="relative ml-2" ref={dropdownRef}>
                                     <button
                                         onClick={() => setIsProfileOpen(!isProfileOpen)}
-                                        className="flex items-center space-x-3 text-white bg-gray-800/50 hover:bg-gray-800 px-4 py-2 rounded-full transition-all border border-gray-700"
+                                        className="flex items-center space-x-3 text-white bg-gray-800/50 hover:bg-gray-800 px-3 py-1.5 rounded-full transition-all border border-gray-700"
                                     >
-                                        <div className="w-8 h-8 rounded-full bg-red-600 flex items-center justify-center text-sm font-bold">
+                                        <div className="w-7 h-7 rounded-full bg-red-600 flex items-center justify-center text-xs font-bold">
                                             {clientData?.fullname?.charAt(0).toUpperCase() || 'U'}
                                         </div>
-                                        <span className="text-sm font-medium max-w-[120px] truncate">{clientData?.fullname}</span>
+                                        <span className="text-sm font-medium max-w-[100px] truncate">{clientData?.fullname}</span>
                                         <ChevronDown size={14} className={`transition-transform ${isProfileOpen ? 'rotate-180' : ''}`} />
                                     </button>
 
@@ -160,9 +246,9 @@ const Header = () => {
                                     )}
                                 </div>
                             ) : (
-                                <div className="flex items-center space-x-2">
-                                    <Link to="/login" className="text-gray-300 hover:text-red-500 px-4 py-2 rounded-md text-sm font-medium transition-colors uppercase tracking-wider">Đăng nhập</Link>
-                                    <Link to="/register" className="bg-red-600 hover:bg-red-700 text-white px-5 py-2.5 rounded-md text-sm font-bold uppercase transition-all transform hover:scale-105">Đăng Ký</Link>
+                                <div className="flex items-center space-x-2 ml-2">
+                                    <Link to="/login" className="text-gray-300 hover:text-red-500 px-3 py-2 rounded-md text-sm font-medium transition-colors uppercase tracking-wider">Đăng nhập</Link>
+                                    <Link to="/register" className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-bold uppercase transition-all transform hover:scale-105">Đăng Ký</Link>
                                 </div>
                             )}
                         </div>
@@ -178,13 +264,43 @@ const Header = () => {
             </div>
 
             {/* MOBILE MENU */}
-            <div className={`${mobileMenuOpen ? 'block' : 'hidden'} md:hidden bg-gray-900 border-t border-gray-800 animate-in slide-in-from-top duration-300`} id="mobile-menu">
-                <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
-                    {navLinks.map(link => (
-                        <Link key={link.to} to={link.to} className={getMobileLinkClass(link.to)} onClick={() => setMobileMenuOpen(false)}>{link.text}</Link>
-                    ))}
+            <div className={`${mobileMenuOpen ? 'block' : 'hidden'} md:hidden bg-gray-900 border-t border-gray-800 animate-in slide-in-from-top duration-300 shadow-2xl`} id="mobile-menu">
+                <div className="px-4 pt-4 pb-2">
+                    {/* --- MOBILE SEARCH BAR --- */}
+                    <form onSubmit={handleSearch} className="relative mb-4 flex flex-col gap-2">
+                        <div className="flex gap-2">
+                            <select
+                                value={searchType}
+                                onChange={(e) => setSearchType(e.target.value)}
+                                className="bg-gray-800 text-gray-300 text-sm rounded-lg px-3 py-3 border border-gray-700 focus:outline-none focus:border-red-600 w-1/3"
+                            >
+                                <option value="package">Gói tập</option>
+                                <option value="coach">HLV</option>
+                                <option value="post">Bài viết</option>
+                                <option value="room">Phòng</option>
+                            </select>
+                            <div className="relative flex-1">
+                                <input
+                                    type="text"
+                                    placeholder="Tìm kiếm..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="w-full bg-gray-800 text-gray-300 text-sm rounded-lg pl-10 pr-4 py-3 focus:outline-none focus:ring-1 focus:ring-red-600 border border-gray-700"
+                                />
+                                <button type="submit" disabled={isSearching} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">
+                                    {isSearching ? <Loader2 size={18} className="animate-spin" /> : <Search size={18} />}
+                                </button>
+                            </div>
+                        </div>
+                    </form>
 
-                    <div className="border-t border-gray-800 pt-4 mt-4 space-y-2">
+                    <div className="space-y-1">
+                        {navLinks.map(link => (
+                            <Link key={link.to} to={link.to} className={getMobileLinkClass(link.to)} onClick={() => setMobileMenuOpen(false)}>{link.text}</Link>
+                        ))}
+                    </div>
+
+                    <div className="border-t border-gray-800 pt-4 mt-4 space-y-2 pb-4">
                         {isLoginned ? (
                             <>
                                 <div className="px-3 py-2 flex items-center space-x-3 text-white mb-2">

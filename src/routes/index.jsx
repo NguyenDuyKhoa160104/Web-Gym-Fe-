@@ -34,6 +34,7 @@ import PersonalTrainerPage from '../pages/client/PersonalTrainer/index.jsx';
 import LoginPage from '../pages/client/Login/index.jsx';
 import RegisterPage from '../pages/client/Register/index.jsx';
 import ClientProfile from '../pages/client/Profile/index.jsx';
+import SearchResultsPage from '../pages/client/SearchResult/index.jsx';
 
 // import NotFound from '../pages/NotFound';
 
@@ -83,7 +84,7 @@ export default function Router() {
                 { path: 'members', element: <AdminMembers /> },
                 { path: 'coaches', element: <AdminCoaches /> },
                 { path: 'schedule', element: <AdminSchedule /> },
-                
+
                 { path: 'packages', element: <PackageManagement /> },
                 { path: 'facilities', element: <FacilityManagement /> },
                 { path: 'rooms', element: <RoomManagement /> },
@@ -119,7 +120,8 @@ export default function Router() {
                 { path: '', element: <HomePage /> },
                 { path: 'packages', element: <PackagesPage /> },
                 { path: 'pt', element: <PersonalTrainerPage /> },
-                { path: 'profile', element: <ClientProfile /> }
+                { path: 'profile', element: <ClientProfile /> },
+                { path: 'search-results', element: <SearchResultsPage /> }
             ]
         },
 
