@@ -13,7 +13,8 @@ const Header = () => {
 
     // --- Search States ---
     const [searchQuery, setSearchQuery] = useState('');
-    const [searchType, setSearchType] = useState('package'); // Default type matching backend
+    // Mặc định tìm kiếm theo package vì đã xóa listbox chọn loại
+    const [searchType, setSearchType] = useState('package');
     const [isSearching, setIsSearching] = useState(false);
 
     const location = useLocation();
@@ -157,7 +158,6 @@ const Header = () => {
         { to: '/', text: 'Trang chủ' },
         { to: '/packages', text: 'Gói tập' },
         { to: '/pt', text: 'HLV Cá nhân' },
-        { to: '#', text: 'Lịch tập' },
     ];
 
     const getLinkClass = (path) => {
@@ -189,30 +189,19 @@ const Header = () => {
 
                             {/* --- DESKTOP SEARCH BAR --- */}
                             <form onSubmit={handleSearch} className="relative ml-2 flex items-center bg-gray-800/50 rounded-full border border-gray-700 focus-within:ring-1 focus-within:ring-red-600 transition-all overflow-hidden group">
-                                <select
-                                    value={searchType}
-                                    onChange={(e) => setSearchType(e.target.value)}
-                                    className="bg-transparent text-xs text-gray-400 font-medium py-2 pl-3 pr-1 outline-none border-r border-gray-700 cursor-pointer hover:text-white transition-colors bg-gray-900 appearance-none"
-                                    style={{ textAlignLast: 'center' }}
-                                >
-                                    <option value="package">Gói tập</option>
-                                    <option value="coach">HLV</option>
-                                    <option value="post">Bài viết</option>
-                                    <option value="room">Phòng</option>
-                                </select>
                                 <input
                                     type="text"
                                     placeholder="Tìm kiếm..."
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="bg-transparent text-gray-300 text-sm pl-3 pr-8 py-1.5 focus:outline-none w-32 lg:w-48 placeholder-gray-500"
+                                    className="bg-transparent text-gray-300 text-sm pl-4 pr-10 py-2 focus:outline-none w-40 lg:w-56 placeholder-gray-500"
                                 />
                                 <button
                                     type="submit"
                                     disabled={isSearching}
-                                    className="absolute right-2 text-gray-500 hover:text-red-500 transition-colors"
+                                    className="absolute right-3 text-gray-500 hover:text-red-500 transition-colors"
                                 >
-                                    {isSearching ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+                                    {isSearching ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
                                 </button>
                             </form>
 
@@ -267,30 +256,18 @@ const Header = () => {
             <div className={`${mobileMenuOpen ? 'block' : 'hidden'} md:hidden bg-gray-900 border-t border-gray-800 animate-in slide-in-from-top duration-300 shadow-2xl`} id="mobile-menu">
                 <div className="px-4 pt-4 pb-2">
                     {/* --- MOBILE SEARCH BAR --- */}
-                    <form onSubmit={handleSearch} className="relative mb-4 flex flex-col gap-2">
-                        <div className="flex gap-2">
-                            <select
-                                value={searchType}
-                                onChange={(e) => setSearchType(e.target.value)}
-                                className="bg-gray-800 text-gray-300 text-sm rounded-lg px-3 py-3 border border-gray-700 focus:outline-none focus:border-red-600 w-1/3"
-                            >
-                                <option value="package">Gói tập</option>
-                                <option value="coach">HLV</option>
-                                <option value="post">Bài viết</option>
-                                <option value="room">Phòng</option>
-                            </select>
-                            <div className="relative flex-1">
-                                <input
-                                    type="text"
-                                    placeholder="Tìm kiếm..."
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="w-full bg-gray-800 text-gray-300 text-sm rounded-lg pl-10 pr-4 py-3 focus:outline-none focus:ring-1 focus:ring-red-600 border border-gray-700"
-                                />
-                                <button type="submit" disabled={isSearching} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">
-                                    {isSearching ? <Loader2 size={18} className="animate-spin" /> : <Search size={18} />}
-                                </button>
-                            </div>
+                    <form onSubmit={handleSearch} className="relative mb-4">
+                        <div className="relative">
+                            <input
+                                type="text"
+                                placeholder="Tìm kiếm..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="w-full bg-gray-800 text-gray-300 text-sm rounded-lg pl-4 pr-10 py-3 focus:outline-none focus:ring-1 focus:ring-red-600 border border-gray-700"
+                            />
+                            <button type="submit" disabled={isSearching} className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500">
+                                {isSearching ? <Loader2 size={18} className="animate-spin" /> : <Search size={18} />}
+                            </button>
                         </div>
                     </form>
 

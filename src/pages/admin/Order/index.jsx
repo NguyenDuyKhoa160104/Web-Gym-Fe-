@@ -44,10 +44,60 @@ const PAYMENT_MAP = {
     2: { label: 'Đã hoàn tiền', color: 'bg-rose-50 text-rose-600 border-rose-100' }
 };
 
+// --- Toast Component ---
+const Toast = ({ message, type, onClose }) => {
+    useEffect(() => {
+        const timer = setTimeout(onClose, 3000);
+        return () => clearTimeout(timer);
+    }, [onClose]);
+
+    return (
+        <div className={`fixed top-6 right-6 z-[150] flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl animate-in slide-in-from-right duration-300 border backdrop-blur-md ${type === 'error' ? 'bg-rose-50/90 border-rose-200 text-rose-700' : 'bg-emerald-50/90 border-emerald-200 text-emerald-700'
+            }`}>
+            {type === 'error' ? <AlertCircle size={20} /> : <Check size={20} />}
+            <p className="font-bold text-sm">{message}</p>
+            <button onClick={onClose} className="ml-2 hover:opacity-70"><X size={16} /></button>
+        </div>
+    );
+};
+
+// --- Confirm Modal Component ---
+const ConfirmModal = ({ isOpen, message, onConfirm, onCancel, type = 'danger' }) => {
+    if (!isOpen) return null;
+    return (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity" onClick={onCancel}></div>
+            <div className="relative bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-100">
+                <div className="p-6 text-center">
+                    <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4 ${type === 'danger' ? 'bg-rose-100 text-rose-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                        {type === 'danger' ? <AlertCircle size={24} /> : <CheckCircle2 size={24} />}
+                    </div>
+                    <h3 className="text-lg font-bold text-slate-800 mb-2">Xác nhận hành động</h3>
+                    <p className="text-sm text-slate-500 mb-6 font-medium leading-relaxed">{message}</p>
+                    <div className="flex gap-3 justify-center">
+                        <button
+                            onClick={onCancel}
+                            className="px-5 py-2.5 rounded-xl text-sm font-bold text-slate-500 hover:bg-slate-100 transition-colors"
+                        >
+                            Hủy bỏ
+                        </button>
+                        <button
+                            onClick={onConfirm}
+                            className={`px-5 py-2.5 rounded-xl text-sm font-bold text-white shadow-lg transition-transform active:scale-95 ${type === 'danger' ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-200' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'}`}
+                        >
+                            Đồng ý
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const OrderManagement = () => {
     const [orders, setOrders] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [isProcessing, setIsProcessing] = useState(false); // State để disable nút khi đang gọi API
+    const [isProcessing, setIsProcessing] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
 
@@ -55,17 +105,24 @@ const OrderManagement = () => {
     const [selectedOrder, setSelectedOrder] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
 
-    // Toast notification
-    const [notification, setNotification] = useState({ show: false, message: '', type: 'success' });
+    // Toast notification state
+    const [notification, setNotification] = useState(null);
+
+    // Confirmation Modal state
+    const [confirmation, setConfirmation] = useState({
+        isOpen: false,
+        message: '',
+        action: null,
+        type: 'danger'
+    });
 
     const showNotice = (message, type = 'success') => {
-        setNotification({ show: true, message, type });
-        setTimeout(() => setNotification({ show: false, message: '', type: 'success' }), 3000);
+        setNotification({ message, type });
     };
 
-    /**
-     * FETCH DATA TỪ API THẬT
-     */
+    const closeNotice = () => setNotification(null);
+
+    // --- FETCH DATA ---
     const fetchOrders = async () => {
         setIsLoading(true);
         const token = localStorage.getItem('tokenAdmin');
@@ -95,12 +152,8 @@ const OrderManagement = () => {
         fetchOrders();
     }, []);
 
-    /**
-     * LOGIC DUYỆT ĐƠN HÀNG (CHECK ORDER) -> Chuyển sang Status 1 (COMPLETED)
-     */
-    const handleCheckOrder = async (orderId) => {
-        if (!window.confirm("Bạn có chắc chắn muốn duyệt đơn hàng này?")) return;
-
+    // --- ACTIONS EXECUTION ---
+    const executeCheckOrder = async (orderId) => {
         setIsProcessing(true);
         const token = localStorage.getItem('tokenAdmin');
         try {
@@ -114,8 +167,7 @@ const OrderManagement = () => {
             const result = await response.json();
 
             if (result.success) {
-                showNotice("Duyệt đơn hàng thành công!", "success");
-                // Cập nhật state local ngay lập tức (Status 0 -> 1)
+                showNotice("Đã duyệt đơn hàng thành công!", "success");
                 setOrders(prev => prev.map(o => o._id === orderId ? { ...o, status: 1 } : o));
                 if (selectedOrder && selectedOrder._id === orderId) {
                     setSelectedOrder(prev => ({ ...prev, status: 1 }));
@@ -131,12 +183,7 @@ const OrderManagement = () => {
         }
     };
 
-    /**
-     * LOGIC HỦY ĐƠN HÀNG (CANCEL ORDER) -> Chuyển sang Status 2 (CANCELLED)
-     */
-    const handleCancelOrder = async (orderId) => {
-        if (!window.confirm("CẢNH BÁO: Bạn có chắc chắn muốn HỦY đơn hàng này không? Hành động này không thể hoàn tác.")) return;
-
+    const executeCancelOrder = async (orderId) => {
         setIsProcessing(true);
         const token = localStorage.getItem('tokenAdmin');
         try {
@@ -151,7 +198,6 @@ const OrderManagement = () => {
 
             if (result.success) {
                 showNotice("Đã hủy đơn hàng!", "success");
-                // Cập nhật state local ngay lập tức (Status -> 2)
                 setOrders(prev => prev.map(o => o._id === orderId ? { ...o, status: 2 } : o));
                 if (selectedOrder && selectedOrder._id === orderId) {
                     setSelectedOrder(prev => ({ ...prev, status: 2 }));
@@ -167,9 +213,33 @@ const OrderManagement = () => {
         }
     };
 
-    /**
-     * Logic lọc dữ liệu phía Client (Search & Filter)
-     */
+    // --- HANDLERS: OPEN CONFIRM MODAL ---
+    const handleCheckOrder = (orderId) => {
+        setConfirmation({
+            isOpen: true,
+            message: "Bạn có chắc chắn muốn DUYỆT đơn hàng này? Khách hàng sẽ nhận được thông báo thành công.",
+            type: 'primary',
+            action: () => executeCheckOrder(orderId)
+        });
+    };
+
+    const handleCancelOrder = (orderId) => {
+        setConfirmation({
+            isOpen: true,
+            message: "CẢNH BÁO: Bạn có chắc chắn muốn HỦY đơn hàng này? Hành động này không thể hoàn tác.",
+            type: 'danger',
+            action: () => executeCancelOrder(orderId)
+        });
+    };
+
+    const onConfirmAction = async () => {
+        if (confirmation.action) {
+            await confirmation.action();
+        }
+        setConfirmation({ ...confirmation, isOpen: false });
+    };
+
+    // --- FILTER ---
     const filteredOrders = useMemo(() => {
         return orders.filter(o => {
             const customerName = o.client?.fullname?.toLowerCase() || '';
@@ -204,15 +274,16 @@ const OrderManagement = () => {
     return (
         <div className="p-6 max-w-[1600px] mx-auto animate-in fade-in duration-700 text-left font-sans text-slate-900">
 
-            {/* Toast Notification */}
-            {notification.show && (
-                <div className={`fixed top-8 right-8 z-[110] flex items-center gap-4 px-6 py-4 rounded-2xl shadow-2xl animate-in slide-in-from-right duration-500 border backdrop-blur-md ${notification.type === 'error' ? 'bg-rose-50/90 border-rose-200 text-rose-700' : 'bg-emerald-50/90 border-emerald-200 text-emerald-700'
-                    }`}>
-                    {notification.type === 'error' ? <AlertCircle size={20} /> : <CheckCircle2 size={20} />}
-                    <p className="font-bold text-sm tracking-tight">{notification.message}</p>
-                    <button onClick={() => setNotification({ ...notification, show: false })} className="ml-2 hover:opacity-50"><X size={16} /></button>
-                </div>
-            )}
+            {/* Toast & Modal */}
+            {notification && <Toast message={notification.message} type={notification.type} onClose={closeNotice} />}
+
+            <ConfirmModal
+                isOpen={confirmation.isOpen}
+                message={confirmation.message}
+                type={confirmation.type}
+                onConfirm={onConfirmAction}
+                onCancel={() => setConfirmation({ ...confirmation, isOpen: false })}
+            />
 
             {/* --- HEADER SECTION --- */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
