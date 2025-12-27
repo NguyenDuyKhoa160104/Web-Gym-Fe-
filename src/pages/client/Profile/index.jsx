@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     User,
     MapPin,
@@ -26,7 +26,11 @@ import {
     AlertTriangle,
     Package,
     Star,
-    MessageSquare
+    MessageSquare,
+    Upload,
+    ZoomIn,
+    ZoomOut,
+    Move
 } from 'lucide-react';
 
 // --- HELPER: API CONFIG ---
@@ -40,6 +44,23 @@ const getApiUrl = () => {
 };
 
 const API_URL = getApiUrl();
+
+const getSERVER_BASE_URL = () => {
+    try {
+        if (typeof import.meta !== 'undefined' && import.meta.env) {
+            if (import.meta.env.VITE_SERVER_BASE_URL) {
+                return import.meta.env.VITE_SERVER_BASE_URL;
+            }
+            const clientApiUrl = import.meta.env.VITE_API_URL_CLIENT || "http://localhost:5000/api/client";
+            const url = new URL(clientApiUrl);
+            return `${url.protocol}//${url.host}`;
+        }
+    } catch (e) { }
+    return "http://localhost:5000";
+};
+
+// Base URL để hiển thị ảnh từ server
+const SERVER_URL = getSERVER_BASE_URL();
 
 // --- CONSTANTS ---
 const ORDER_STATUS = {
@@ -82,18 +103,163 @@ const Toast = ({ message, type, onClose }) => {
     );
 };
 
-const Modal = ({ isOpen, title, children, onClose }) => {
+const Modal = ({ isOpen, title, children, onClose, maxWidth = "max-w-md" }) => {
     if (!isOpen) return null;
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-black/80 backdrop-blur-sm transition-opacity" onClick={onClose}></div>
-            <div className="relative bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-md p-6 shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className={`relative bg-gray-900 border border-gray-800 rounded-2xl w-full ${maxWidth} p-6 shadow-2xl animate-in zoom-in-95 duration-200`}>
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="text-xl font-bold text-white">{title}</h3>
                     <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={20} /></button>
                 </div>
                 {children}
             </div>
+        </div>
+    );
+};
+// --- AVATAR EDITOR COMPONENT ---
+const AvatarEditor = ({ imageSrc, onSave, onCancel }) => {
+    const [scale, setScale] = useState(1);
+    const [position, setPosition] = useState({ x: 0, y: 0 });
+    const [isDragging, setIsDragging] = useState(false);
+    const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+
+    const imageRef = useRef(null);
+    const canvasRef = useRef(null);
+
+    const handleMouseDown = (e) => {
+        setIsDragging(true);
+        setDragStart({ x: e.clientX - position.x, y: e.clientY - position.y });
+    };
+
+    const handleMouseMove = (e) => {
+        if (isDragging) {
+            setPosition({
+                x: e.clientX - dragStart.x,
+                y: e.clientY - dragStart.y
+            });
+        }
+    };
+
+    const handleMouseUp = () => {
+        setIsDragging(false);
+    };
+
+    const handleSave = () => {
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        const img = imageRef.current;
+
+        // Kích thước output mong muốn
+        const outputSize = 400;
+        canvas.width = outputSize;
+        canvas.height = outputSize;
+
+        // Xóa canvas
+        ctx.clearRect(0, 0, outputSize, outputSize);
+
+        // Tạo khung tròn (clipping path)
+        ctx.beginPath();
+        ctx.arc(outputSize / 2, outputSize / 2, outputSize / 2, 0, 2 * Math.PI);
+        ctx.clip();
+
+        // Vẽ ảnh đã transform
+        const editorSize = 256;
+        const scaleFactor = outputSize / editorSize;
+
+        ctx.save();
+        ctx.translate(outputSize / 2, outputSize / 2);
+        ctx.scale(scale, scale);
+        ctx.translate(-outputSize / 2, -outputSize / 2);
+
+        const domImgWidth = 256;
+        const domImgHeight = 256;
+
+        const ratio = Math.max(outputSize / img.naturalWidth, outputSize / img.naturalHeight);
+        const width = img.naturalWidth * ratio * scale;
+        const height = img.naturalHeight * ratio * scale;
+
+        const x = (outputSize - width) / 2 + (position.x * (outputSize / domImgWidth));
+        const y = (outputSize - height) / 2 + (position.y * (outputSize / domImgHeight));
+
+        ctx.translate(outputSize / 2, outputSize / 2);
+        ctx.translate(-outputSize / 2, -outputSize / 2);
+
+        ctx.drawImage(img, x, y, width, height);
+        ctx.restore();
+
+        // Xuất ra Base64
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+        onSave(dataUrl);
+    };
+
+    return (
+        <div className="flex flex-col items-center space-y-6">
+            <div
+                className="relative w-64 h-64 bg-black overflow-hidden rounded-full border-4 border-red-600 shadow-xl cursor-move touch-none"
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+            >
+                <img
+                    ref={imageRef}
+                    src={imageSrc}
+                    alt="Editor"
+                    className="absolute max-w-none origin-center select-none pointer-events-none"
+                    style={{
+                        transform: `translate(-50%, -50%) translate(${position.x}px, ${position.y}px) scale(${scale})`,
+                        left: '50%',
+                        top: '50%',
+                        minWidth: '100%',
+                        minHeight: '100%'
+                    }}
+                    draggable={false}
+                />
+                <div className="absolute inset-0 pointer-events-none border-2 border-white/20 rounded-full"></div>
+            </div>
+
+            <div className="w-full space-y-2">
+                <div className="flex justify-between text-xs text-gray-400 uppercase font-bold">
+                    <span>Thu nhỏ</span>
+                    <span>Phóng to</span>
+                </div>
+                <div className="flex items-center gap-4">
+                    <ZoomOut size={16} className="text-gray-500" />
+                    <input
+                        type="range"
+                        min="1"
+                        max="3"
+                        step="0.01"
+                        value={scale}
+                        onChange={(e) => setScale(parseFloat(e.target.value))}
+                        className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-red-600"
+                    />
+                    <ZoomIn size={16} className="text-gray-500" />
+                </div>
+            </div>
+
+            <p className="text-xs text-gray-500 flex items-center gap-1">
+                <Move size={12} /> Kéo để di chuyển ảnh
+            </p>
+
+            <div className="flex justify-end gap-3 w-full pt-4 border-t border-gray-800">
+                <button
+                    onClick={onCancel}
+                    className="px-4 py-2 rounded-lg border border-gray-700 text-gray-300 hover:bg-gray-800 text-sm font-bold uppercase"
+                >
+                    Hủy
+                </button>
+                <button
+                    onClick={handleSave}
+                    className="px-6 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 text-sm font-bold uppercase shadow-lg shadow-red-900/20"
+                >
+                    Lưu ảnh
+                </button>
+            </div>
+
+            <canvas ref={canvasRef} style={{ display: 'none' }} />
         </div>
     );
 };
@@ -105,6 +271,9 @@ const CustomerProfile = ({ onBack }) => {
     const [error, setError] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
 
+    // Avatar Load Error State
+    const [avatarLoadError, setAvatarLoadError] = useState(false);
+
     // History State
     const [bookingHistory, setBookingHistory] = useState([]);
     const [isLoadingHistory, setIsLoadingHistory] = useState(false);
@@ -112,8 +281,11 @@ const CustomerProfile = ({ onBack }) => {
     // UI State for Modals/Toasts
     const [notification, setNotification] = useState(null);
     const [showLogoutModal, setShowLogoutModal] = useState(false);
-    const [showAvatarModal, setShowAvatarModal] = useState(false);
-    const [tempAvatarUrl, setTempAvatarUrl] = useState('');
+
+    // Avatar Logic States
+    const [showAvatarEditor, setShowAvatarEditor] = useState(false);
+    const [selectedImageFile, setSelectedImageFile] = useState(null); // URL blob tạm thời
+    const fileInputRef = useRef(null);
 
     // Review State
     const [showReviewModal, setShowReviewModal] = useState(false);
@@ -153,6 +325,29 @@ const CustomerProfile = ({ onBack }) => {
         return date;
     };
 
+    // Helper để hiển thị URL ảnh (Xử lý đường dẫn tương đối từ backend)
+    const getAvatarSrc = (url) => {
+        console.log("Raw avatar_url from backend:", url); // Debugging line
+        if (!url) return "https://placehold.co/200x200?text=No+Avatar";
+        if (url.startsWith('http') || url.startsWith('https')) return url;
+        // Nếu là base64 data url (lúc preview)
+        if (url.startsWith('data:')) return url;
+
+        // Xử lý đường dẫn tương đối từ backend
+        // Loại bỏ tiền tố 'public/' nếu có, vì express.static('public') đã xử lý nó
+        let cleanUrl = url;
+        if (cleanUrl.startsWith('public/')) {
+            cleanUrl = cleanUrl.substring(7); // Remove "public/"
+        }
+
+        const baseUrl = SERVER_URL.endsWith('/') ? SERVER_URL.slice(0, -1) : SERVER_URL;
+        const path = cleanUrl.startsWith('/') ? cleanUrl : `/${cleanUrl}`;
+        
+        const finalUrl = `${baseUrl}${path}`; // Debugging line
+        console.log("Final avatar URL generated:", finalUrl); // Debugging line
+        return finalUrl;
+    };
+
     // --- 1. FETCH PROFILE DATA ---
     useEffect(() => {
         const fetchProfile = async () => {
@@ -161,7 +356,6 @@ const CustomerProfile = ({ onBack }) => {
 
             try {
                 const token = localStorage.getItem('tokenClient');
-                // Gọi API không cần ID params (dựa trên cấu hình trước đó)
                 const response = await fetch(`${API_URL}/my-profile`, {
                     method: 'GET',
                     headers: {
@@ -200,6 +394,14 @@ const CustomerProfile = ({ onBack }) => {
         fetchProfile();
     }, []);
 
+    // --- RESET AVATAR ERROR ON URL CHANGE ---
+    useEffect(() => {
+        // Khi avatar_url thay đổi (ví dụ sau khi fetch hoặc upload), reset lỗi để thử load lại ảnh
+        if (userData?.avatar_url) {
+            setAvatarLoadError(false);
+        }
+    }, [userData?.avatar_url]);
+
     // --- 1.1 FETCH HISTORY DATA ---
     useEffect(() => {
         if (activeTab === 'history' && userData?._id) {
@@ -207,9 +409,8 @@ const CustomerProfile = ({ onBack }) => {
                 setIsLoadingHistory(true);
                 try {
                     const token = localStorage.getItem('tokenClient');
-                    // API yêu cầu method POST và id trên URL theo đề bài
                     const response = await fetch(`${API_URL}/my-orders/${userData._id}`, {
-                        method: 'GET',
+                        method: 'POST',
                         headers: {
                             'Authorization': `Bearer ${token}`,
                             'Content-Type': 'application/json'
@@ -217,7 +418,6 @@ const CustomerProfile = ({ onBack }) => {
                     });
                     const result = await response.json();
                     if (result.success) {
-                        // Sắp xếp đơn mới nhất lên đầu
                         const sortedData = (result.data || []).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
                         setBookingHistory(sortedData);
                     }
@@ -266,6 +466,7 @@ const CustomerProfile = ({ onBack }) => {
             if (response.ok && result.success) {
                 notify("Cập nhật thông tin thành công!", "success");
                 setUserData(prev => ({ ...prev, ...result.data }));
+                setActiveTab('overview');
             } else {
                 notify(result.message || "Cập nhật thất bại.", "error");
             }
@@ -276,34 +477,66 @@ const CustomerProfile = ({ onBack }) => {
         }
     };
 
-    // --- 3. UPDATE AVATAR HANDLER ---
+    // --- 3. UPDATE AVATAR HANDLER (FROM DISK & CROP - FIXED) ---
     const handleAvatarClick = () => {
-        setTempAvatarUrl(userData?.avatar_url || '');
-        setShowAvatarModal(true);
+        fileInputRef.current.click();
     };
 
-    const handleAvatarSubmit = async () => {
+    const handleFileChange = (event) => {
+        const file = event.target.files[0];
+        if (file) {
+            const imageUrl = URL.createObjectURL(file);
+            setSelectedImageFile(imageUrl);
+            setShowAvatarEditor(true);
+            event.target.value = null;
+        }
+    };
+
+    const handleCropSave = async (base64Image) => {
+        setShowAvatarEditor(false);
+        URL.revokeObjectURL(selectedImageFile);
+        setSelectedImageFile(null);
+
         try {
+            // 1. Convert Base64 back to Blob/File
+            const res = await fetch(base64Image);
+            const blob = await res.blob();
+            const file = new File([blob], "avatar.jpg", { type: "image/jpeg" });
+
+            // 2. Create FormData
+            const formData = new FormData();
+            formData.append('avatar', file);
+
             const token = localStorage.getItem('tokenClient');
+
+            // 3. Send Request (Do NOT set Content-Type header manually for FormData)
             const response = await fetch(`${API_URL}/update-avatar`, {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
+                    'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify({ avatar_url: tempAvatarUrl })
+                body: formData
             });
+
             const result = await response.json();
+
             if (result.success) {
-                setUserData(prev => ({ ...prev, avatar_url: tempAvatarUrl }));
+                // Update with the new URL returned from server
+                setUserData(prev => ({ ...prev, avatar_url: result.data.avatar_url }));
                 notify("Cập nhật ảnh đại diện thành công!", "success");
-                setShowAvatarModal(false);
             } else {
-                notify(result.message, "error");
+                notify(result.message || "Lỗi cập nhật ảnh", "error");
             }
         } catch (err) {
-            notify("Lỗi khi cập nhật ảnh đại diện", "error");
+            console.error(err);
+            notify("Lỗi khi gửi ảnh lên server", "error");
         }
+    };
+
+    const handleCropCancel = () => {
+        setShowAvatarEditor(false);
+        URL.revokeObjectURL(selectedImageFile);
+        setSelectedImageFile(null);
     };
 
     // --- 4. REVIEW HANDLER ---
@@ -406,6 +639,31 @@ const CustomerProfile = ({ onBack }) => {
                 />
             )}
 
+            {/* Hidden File Input for Avatar Upload */}
+            <input
+                type="file"
+                ref={fileInputRef}
+                className="hidden"
+                accept="image/*"
+                onChange={handleFileChange}
+            />
+
+            {/* Avatar Editor Modal */}
+            <Modal
+                isOpen={showAvatarEditor}
+                title="Căn chỉnh ảnh đại diện"
+                onClose={handleCropCancel}
+                maxWidth="max-w-md"
+            >
+                {selectedImageFile && (
+                    <AvatarEditor
+                        imageSrc={selectedImageFile}
+                        onSave={handleCropSave}
+                        onCancel={handleCropCancel}
+                    />
+                )}
+            </Modal>
+
             {/* Review Modal */}
             <Modal isOpen={showReviewModal} title="Đánh giá gói tập" onClose={() => setShowReviewModal(false)}>
                 <div className="space-y-4">
@@ -461,35 +719,6 @@ const CustomerProfile = ({ onBack }) => {
                 </div>
             </Modal>
 
-            {/* Avatar Modal */}
-            <Modal isOpen={showAvatarModal} title="Đổi ảnh đại diện" onClose={() => setShowAvatarModal(false)}>
-                <div className="space-y-4">
-                    <p className="text-sm text-gray-400">Nhập đường dẫn URL hình ảnh mới của bạn:</p>
-                    <input
-                        type="text"
-                        value={tempAvatarUrl}
-                        onChange={(e) => setTempAvatarUrl(e.target.value)}
-                        placeholder="https://example.com/avatar.jpg"
-                        className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-red-600"
-                        autoFocus
-                    />
-                    <div className="flex justify-end gap-3 mt-4">
-                        <button
-                            onClick={() => setShowAvatarModal(false)}
-                            className="px-4 py-2 rounded-lg border border-gray-700 text-gray-300 hover:bg-gray-800 text-sm font-bold uppercase"
-                        >
-                            Hủy
-                        </button>
-                        <button
-                            onClick={handleAvatarSubmit}
-                            className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 text-sm font-bold uppercase shadow-lg shadow-red-900/20"
-                        >
-                            Lưu ảnh
-                        </button>
-                    </div>
-                </div>
-            </Modal>
-
             {/* Logout Modal */}
             <Modal isOpen={showLogoutModal} title="Xác nhận đăng xuất" onClose={() => setShowLogoutModal(false)}>
                 <div className="space-y-4">
@@ -534,7 +763,21 @@ const CustomerProfile = ({ onBack }) => {
                                     onClick={handleAvatarClick}
                                     title="Nhấn để đổi ảnh đại diện"
                                 >
-                                    <img src={userData.avatar_url || "https://placehold.co/200x200?text=No+Avatar"} alt="User" className="w-full h-full object-cover" />
+                                    {/* Cập nhật sử dụng getAvatarSrc */}
+                                    <img
+                                        src={avatarLoadError ? "https://placehold.co/200x200?text=No+Avatar" : getAvatarSrc(userData.avatar_url)}
+                                        alt="User"
+                                        title={`URL: ${getAvatarSrc(userData.avatar_url)}`} // Debug: Rê chuột vào sẽ thấy URL
+                                        className="w-full h-full object-cover"
+                                        onError={(e) => {
+                                            // Only set error if it's not already the placeholder to prevent infinite loops
+                                            if (e.target.src !== "https://placehold.co/200x200?text=No+Avatar") {
+                                                console.error("Failed to load avatar:", e.target.src); // Debug log
+                                                setAvatarLoadError(true);
+                                            }
+                                        }}
+                                        onLoad={() => setAvatarLoadError(false)} // Reset error on successful load
+                                    />
                                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                         <Camera size={24} className="text-white" />
                                     </div>
@@ -669,7 +912,19 @@ const CustomerProfile = ({ onBack }) => {
                                         <div className="space-y-4">
                                             {bookingHistory.length > 0 ? (
                                                 bookingHistory.map((order) => {
-                                                    // Determine Status Label and Class
+                                                    // Logic: Lấy gói đầu tiên để hiển thị thông tin chính (hoặc gom nhóm nếu cần)
+                                                    const detail = order.details && order.details.length > 0 ? order.details[0] : null;
+
+                                                    // Tính toán ngày hết hạn và trạng thái
+                                                    const duration = detail?.durationAtPurchase || 0;
+                                                    const expiryDate = calculateExpiry(order.orderDate, duration);
+                                                    const isExpired = expiryDate ? new Date() > expiryDate : false;
+
+                                                    // Tên gói tập (fallback nếu JSON thiếu tên)
+                                                    const packageName = detail?.package?.name || `Gói tập ${duration} ngày`;
+                                                    const packageId = detail?.package?._id;
+
+                                                    // Trạng thái hiển thị
                                                     let statusLabel = 'Không xác định';
                                                     let statusClass = 'bg-gray-700/50 text-gray-500 border-gray-700';
 
@@ -680,8 +935,13 @@ const CustomerProfile = ({ onBack }) => {
                                                         statusLabel = 'Đã hủy';
                                                         statusClass = 'bg-red-500/10 text-red-500 border border-red-500/20';
                                                     } else if (order.status === ORDER_STATUS.COMPLETED) {
-                                                        statusLabel = 'Hoàn thành';
-                                                        statusClass = 'bg-green-500/10 text-green-500 border border-green-500/20';
+                                                        if (isExpired) {
+                                                            statusLabel = 'Hết hạn';
+                                                            statusClass = 'bg-gray-600/20 text-gray-400 border border-gray-600/30';
+                                                        } else {
+                                                            statusLabel = 'Đang tập';
+                                                            statusClass = 'bg-green-500/10 text-green-500 border border-green-500/20';
+                                                        }
                                                     }
 
                                                     return (
@@ -732,7 +992,7 @@ const CustomerProfile = ({ onBack }) => {
                                                                                     </button>
                                                                                 )}
                                                                             </div>
-                                                                        )
+                                                                        );
                                                                     })
                                                                 ) : (
                                                                     <div className="text-center text-xs text-gray-500 italic py-2">

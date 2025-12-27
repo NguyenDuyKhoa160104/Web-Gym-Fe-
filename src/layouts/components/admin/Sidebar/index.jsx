@@ -12,7 +12,8 @@ import {
     Wrench,
     BarChart2,
     ShoppingCart,
-    Building
+    Building,
+    Star
 } from 'lucide-react';
 
 // Component con để hiển thị từng mục trong menu
@@ -105,6 +106,12 @@ const Sidebar = ({ isOpen, activeTab }) => {
                     label={isOpen ? "Thống Kê" : ""}
                     active={activeTab === 'statistics'}
                     to="/admin/statistics"
+                />
+                <SidebarItem
+                    icon={Star}
+                    label={isOpen ? "Quản lý đánh giá" : ""}
+                    active={activeTab === 'package-review'}
+                    to="/admin/package-review"
                 />
 
                 <div className="my-4 border-t border-slate-800"></div>

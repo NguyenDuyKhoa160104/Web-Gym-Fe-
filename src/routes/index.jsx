@@ -19,6 +19,7 @@ import OrderManagement from '../pages/admin/Order/index.jsx';
 import Statistics from '../pages/admin/Statistics/index.jsx';
 import AdminLoginPage from '../pages/admin/Login/index.jsx';
 import RoomManagement from '../pages/admin/Rooms/index.jsx';
+import PackageReview from '../pages/admin/PackageReview/index.jsx';
 // Coach
 import CoachDashboard from '../pages/coach/Dashboard/index.jsx';
 import CoachSchedule from '../pages/coach/Schedule/index.jsx';
@@ -91,6 +92,7 @@ export default function Router() {
                 { path: 'orders', element: <OrderManagement /> },
                 { path: 'statistics', element: <Statistics /> },
                 { path: 'settings', element: <AdminSettings /> },
+                { path: 'package-review', element: <PackageReview /> },
             ]
         },
 
