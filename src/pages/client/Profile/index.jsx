@@ -140,7 +140,7 @@ const TabButton = ({ id, icon: Icon, label, activeTab, setActiveTab }) => (
     </button>
 );
 
-// --- COMPONENT: ORDER PACKAGE ITEM (With Check Review Logic) ---
+// --- COMPONENT: ORDER PACKAGE ITEM ---
 const OrderPackageItem = ({ detail, order, onOpenReview, refreshTrigger }) => {
     const [reviewState, setReviewState] = useState({ checked: false, isReviewed: false, rating: 0 });
 
@@ -226,7 +226,7 @@ const OrderPackageItem = ({ detail, order, onOpenReview, refreshTrigger }) => {
     );
 };
 
-// --- AVATAR EDITOR COMPONENT ---
+// --- AVATAR EDITOR COMPONENT (ĐỒNG BỘ TỶ LỆ) ---
 const AvatarEditor = ({ imageSrc, onSave, onCancel }) => {
     const [scale, setScale] = useState(1);
     const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -275,8 +275,10 @@ const AvatarEditor = ({ imageSrc, onSave, onCancel }) => {
         canvas.height = outputSize;
 
         ctx.clearRect(0, 0, outputSize, outputSize);
+
+        // Tạo khung tròn
         ctx.beginPath();
-        ctx.rect(0, 0, outputSize, outputSize);
+        ctx.arc(outputSize / 2, outputSize / 2, outputSize / 2, 0, 2 * Math.PI);
         ctx.clip();
 
         const editorSize = 256;
@@ -292,6 +294,7 @@ const AvatarEditor = ({ imageSrc, onSave, onCancel }) => {
         const yOffset = position.y * (outputSize / editorSize);
 
         ctx.translate(xOffset, yOffset);
+
         ctx.drawImage(img, -width / 2, -height / 2, width, height);
         ctx.restore();
 
@@ -324,6 +327,7 @@ const AvatarEditor = ({ imageSrc, onSave, onCancel }) => {
                     draggable={false}
                 />
                 <div className="absolute inset-0 pointer-events-none border-2 border-white/20 rounded-full"></div>
+                <div className="absolute top-1/2 left-1/2 w-1 h-1 bg-red-500 rounded-full -translate-x-1/2 -translate-y-1/2 opacity-30 pointer-events-none"></div>
             </div>
 
             <div className="w-full space-y-2">
@@ -467,23 +471,19 @@ const CustomerProfile = ({ onBack }) => {
         }
     }, [activeTab, userData, refreshHistory]);
 
-    // --- 3. FETCH SCHEDULE (LỊCH TẬP) - ĐÃ CẬP NHẬT LOGIC ---
-    // API: GET /client/my-schedule/:id
+    // --- 3. FETCH SCHEDULE (LỊCH TẬP) ---
     useEffect(() => {
         if (activeTab === 'schedule' && userData?._id) {
             const fetchSchedule = async () => {
                 setIsLoadingSchedule(true);
                 try {
                     const token = localStorage.getItem('tokenClient');
-                    // Gửi ID của client lên API như yêu cầu: /client/my-schedule/:id
                     const response = await fetch(`${API_URL}/my-schedule/${userData._id}`, {
                         method: 'GET',
                         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
                     });
                     const result = await response.json();
                     if (result.success) {
-                        // Sắp xếp lịch theo ngày giờ giảm dần (mới nhất lên đầu) hoặc tăng dần (sắp tới)
-                        // Ở đây ta sắp xếp tăng dần để thấy lịch sắp tới
                         const sorted = (result.data || []).sort((a, b) => {
                             const dateA = new Date(`${a.date}T${a.startTime}`);
                             const dateB = new Date(`${b.date}T${b.startTime}`);
@@ -538,11 +538,64 @@ const CustomerProfile = ({ onBack }) => {
         }
     };
 
-    // --- 5. AVATAR UPLOAD (DISABLED) ---
-    const handleAvatarClick = () => { /* Disabled */ };
-    const handleFileChange = (event) => { /* Disabled */ };
-    const handleCropSave = async (base64Image) => { /* Disabled */ };
-    const handleCropCancel = () => { /* Disabled */ };
+    // --- 5. AVATAR UPLOAD (RESTORED) ---
+    const handleAvatarClick = () => {
+        if (fileInputRef.current) {
+            fileInputRef.current.click();
+        }
+    };
+
+    const handleFileChange = (event) => {
+        const file = event.target.files[0];
+        if (file) {
+            if (!file.type.startsWith('image/')) {
+                notify("Vui lòng chỉ chọn file ảnh!", "error");
+                return;
+            }
+            const imageUrl = URL.createObjectURL(file);
+            setSelectedImageFile(imageUrl);
+            setShowAvatarEditor(true);
+            event.target.value = null;
+        }
+    };
+
+    const handleCropSave = async (base64Image) => {
+        setShowAvatarEditor(false);
+        URL.revokeObjectURL(selectedImageFile);
+        setSelectedImageFile(null);
+        try {
+            const res = await fetch(base64Image);
+            const blob = await res.blob();
+            const file = new File([blob], "avatar.jpg", { type: "image/jpeg" });
+            const formData = new FormData();
+            formData.append('avatar', file);
+            const token = localStorage.getItem('tokenClient');
+            const response = await fetch(`${API_URL}/update-avatar`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: formData
+            });
+            const result = await response.json();
+            if (result.success) {
+                // Thêm timestamp để ép trình duyệt load ảnh mới
+                const newAvatarUrl = result.data.avatar_url + "?t=" + new Date().getTime();
+                setUserData(prev => ({ ...prev, avatar_url: newAvatarUrl }));
+                notify("Cập nhật ảnh đại diện thành công!", "success");
+            } else {
+                notify(result.message || "Lỗi cập nhật ảnh", "error");
+            }
+        } catch (err) {
+            notify("Lỗi khi gửi ảnh lên server", "error");
+        }
+    };
+
+    const handleCropCancel = () => {
+        setShowAvatarEditor(false);
+        if (selectedImageFile) {
+            URL.revokeObjectURL(selectedImageFile);
+            setSelectedImageFile(null);
+        }
+    };
 
     // --- 6. REVIEW ---
     const openReviewModal = (packageId, packageName) => {
@@ -590,10 +643,10 @@ const CustomerProfile = ({ onBack }) => {
     return (
         <div className="bg-black min-h-screen text-gray-100 font-sans relative">
             {notification && <Toast message={notification.message} type={notification.type} onClose={() => setNotification(null)} />}
-            {/* Input file ẩn vẫn giữ nhưng không trigger */}
             <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
-
-            {/* Modal Review */}
+            <Modal isOpen={showAvatarEditor} title="Căn chỉnh ảnh đại diện" onClose={handleCropCancel} maxWidth="max-w-md">
+                {selectedImageFile && <AvatarEditor imageSrc={selectedImageFile} onSave={handleCropSave} onCancel={handleCropCancel} />}
+            </Modal>
             <Modal isOpen={showReviewModal} title="Đánh giá gói tập" onClose={() => setShowReviewModal(false)}>
                 <div className="space-y-4">
                     <p className="text-sm text-gray-300">Bạn cảm thấy thế nào về gói tập <strong className="text-red-500">{reviewData.packageName}</strong>?</p>
@@ -612,8 +665,6 @@ const CustomerProfile = ({ onBack }) => {
                     </div>
                 </div>
             </Modal>
-
-            {/* Modal Logout */}
             <Modal isOpen={showLogoutModal} title="Xác nhận đăng xuất" onClose={() => setShowLogoutModal(false)}>
                 <div className="space-y-4">
                     <p className="text-gray-300">Bạn có chắc chắn muốn đăng xuất khỏi tài khoản không?</p>
@@ -631,10 +682,25 @@ const CustomerProfile = ({ onBack }) => {
                         <div className="bg-gray-900 rounded-3xl p-6 border border-gray-800 shadow-2xl relative overflow-hidden group">
                             <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-r from-red-900 to-red-600 opacity-20"></div>
                             <div className="relative flex flex-col items-center">
-                                {/* Avatar Read-only */}
-                                <div className="w-28 h-28 rounded-full border-4 border-gray-900 shadow-2xl overflow-hidden mb-4 relative z-10 cursor-default bg-gray-800" title="Ảnh đại diện">
-                                    <img src={avatarLoadError ? "https://placehold.co/200x200?text=No+Avatar" : getAvatarSrc(userData.avatar_url)} alt="User" className="w-full h-full object-cover" onError={(e) => { if (e.target.src !== "https://placehold.co/200x200?text=No+Avatar") setAvatarLoadError(true); }} onLoad={(e) => { if (e.target.src !== "https://placehold.co/200x200?text=No+Avatar") setAvatarLoadError(false); }} />
+                                {/* KHÔI PHỤC: Avatar Clickable */}
+                                <div
+                                    className="w-28 h-28 rounded-full border-4 border-gray-900 shadow-2xl overflow-hidden mb-4 relative z-10 cursor-pointer group-hover:border-red-600 transition-colors bg-gray-800"
+                                    onClick={handleAvatarClick}
+                                    title="Nhấn để đổi ảnh đại diện"
+                                >
+                                    <img
+                                        src={avatarLoadError ? "https://placehold.co/200x200?text=No+Avatar" : getAvatarSrc(userData.avatar_url)}
+                                        alt="User"
+                                        className="w-full h-full object-cover"
+                                        onError={(e) => { if (e.target.src !== "https://placehold.co/200x200?text=No+Avatar") setAvatarLoadError(true); }}
+                                        onLoad={(e) => { if (e.target.src !== "https://placehold.co/200x200?text=No+Avatar") setAvatarLoadError(false); }}
+                                    />
+                                    {/* KHÔI PHỤC: Icon Camera overlay */}
+                                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <Camera size={24} className="text-white" />
+                                    </div>
                                 </div>
+
                                 <h2 className="text-2xl font-black text-white mb-1 text-center">{userData.fullname || "Chưa cập nhật tên"}</h2>
                                 <div className="flex items-center gap-2 mb-4"><span className="px-3 py-1 rounded-full bg-gradient-to-r from-yellow-600 to-yellow-400 text-black text-[10px] font-black uppercase tracking-wider shadow-lg">{userData.status === 1 ? 'Active Member' : 'Inactive'}</span><span className="text-xs text-gray-500 truncate max-w-[150px]">ID: {userData._id ? userData._id.substring(0, 8) : '...'}...</span></div>
                                 <button onClick={() => setActiveTab('settings')} className="mt-2 mb-6 px-6 py-2 bg-red-600/10 text-red-500 hover:bg-red-600 hover:text-white border border-red-600/50 rounded-full text-xs font-bold uppercase tracking-wide transition-all flex items-center gap-2"><Edit2 size={14} /> Chỉnh sửa hồ sơ</button>
@@ -685,7 +751,7 @@ const CustomerProfile = ({ onBack }) => {
                                 </div>
                             )}
 
-                            {/* TAB: SCHEDULE (LỊCH TẬP) - Đã cập nhật */}
+                            {/* TAB: SCHEDULE (LỊCH TẬP) */}
                             {activeTab === 'schedule' && (
                                 <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                                     <h3 className="text-2xl font-black uppercase text-white flex items-center gap-3"><Calendar className="text-red-600" /> Lịch tập sắp tới</h3>
@@ -700,7 +766,6 @@ const CustomerProfile = ({ onBack }) => {
                                                     {schedules.map((schedule) => (
                                                         <div key={schedule._id} className="bg-gray-800 p-5 rounded-2xl border border-gray-700 relative overflow-hidden flex flex-col justify-between">
                                                             <div className="absolute top-0 right-0 p-3">
-                                                                {/* Hiển thị ngày tập */}
                                                                 <span className="bg-red-600 text-white text-[10px] font-bold px-2 py-1 rounded uppercase">
                                                                     {schedule.date ? formatDate(schedule.date) : "N/A"}
                                                                 </span>
@@ -708,7 +773,7 @@ const CustomerProfile = ({ onBack }) => {
                                                             <div>
                                                                 <h4 className="font-bold text-white text-lg mb-1 flex items-center gap-2">
                                                                     <User size={18} className="text-blue-500" />
-                                                                    {/* Vì đây là lịch của client, nên hiển thị tên Coach nếu có, hoặc mặc định PT */}
+                                                                    {/* Tên HLV */}
                                                                     {schedule.coach?.fullname || "HLV Cá Nhân"}
                                                                 </h4>
                                                                 <div className="text-red-500 text-sm font-bold mb-4 flex items-center gap-2">
@@ -733,7 +798,6 @@ const CustomerProfile = ({ onBack }) => {
                                                                 </div>
                                                             </div>
 
-                                                            {/* Nút hủy lịch (có thể disable nếu quá gần giờ tập) */}
                                                             <button className="w-full mt-4 py-2 border border-gray-600 rounded-lg text-xs font-bold uppercase hover:bg-white hover:text-black transition-colors">
                                                                 Hủy lịch
                                                             </button>
