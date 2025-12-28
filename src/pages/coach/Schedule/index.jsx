@@ -34,6 +34,23 @@ const getApiUrl = () => {
 
 const API_COACH = getApiUrl();
 
+// Helper lấy Base URL để hiển thị ảnh
+const getSERVER_BASE_URL = () => {
+    try {
+        if (typeof import.meta !== 'undefined' && import.meta.env) {
+            if (import.meta.env.VITE_SERVER_BASE_URL) {
+                return import.meta.env.VITE_SERVER_BASE_URL;
+            }
+            // Fallback lấy host từ API URL
+            const url = new URL(API_COACH);
+            return `${url.protocol}//${url.host}`;
+        }
+    } catch (e) { }
+    return "http://localhost:5000";
+};
+
+const SERVER_URL = getSERVER_BASE_URL();
+
 // ============================================================================
 // HELPERS (Xử lý Ngày & Thứ tự động - Không cần thư viện)
 // ============================================================================
@@ -226,10 +243,10 @@ const DateSelector = ({ selectedDate, onSelectDate, minDate }) => {
                             onClick={() => !isPast && onSelectDate(item.fullDate)}
                             disabled={isPast}
                             className={`flex flex-col items-center justify-center min-w-[3.5rem] h-16 rounded-xl transition-all ${isSelected
-                                    ? 'bg-blue-600 text-white shadow-md transform scale-105'
-                                    : isPast
-                                        ? 'bg-slate-50 text-slate-300 cursor-not-allowed opacity-60'
-                                        : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
+                                ? 'bg-blue-600 text-white shadow-md transform scale-105'
+                                : isPast
+                                    ? 'bg-slate-50 text-slate-300 cursor-not-allowed opacity-60'
+                                    : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
                                 }`}
                         >
                             <span className={`text-xs font-medium mb-1 ${isSelected ? 'text-blue-100' : 'text-inherit'}`}>
@@ -251,15 +268,26 @@ const DateSelector = ({ selectedDate, onSelectDate, minDate }) => {
 const SessionCard = ({ session, onDelete }) => {
     const getSessionStyle = (status) => {
         switch (status) {
-            case 'Scheduled': return { border: 'border-l-4 border-l-blue-500', badge: 'bg-blue-100 text-blue-700', label: 'Sắp tới' };
-            case 'Completed': return { border: 'border-l-4 border-l-green-500', badge: 'bg-green-100 text-green-700', label: 'Hoàn thành' };
-            case 'Canceled': return { border: 'border-l-4 border-l-red-500', badge: 'bg-red-100 text-red-700', label: 'Đã hủy' };
-            default: return { border: 'border-l-4 border-l-slate-400', badge: 'bg-slate-100 text-slate-700', label: status };
+            case 'scheduled': return { border: 'border-l-4 border-l-blue-500', badge: 'bg-blue-100 text-blue-700', label: 'Sắp tới' };
+            case 'completed': return { border: 'border-l-4 border-l-green-500', badge: 'bg-green-100 text-green-700', label: 'Hoàn thành' };
+            case 'canceled': return { border: 'border-l-4 border-l-red-500', badge: 'bg-red-100 text-red-700', label: 'Đã hủy' };
+            default: return { border: 'border-l-4 border-l-slate-400', badge: 'bg-slate-100 text-slate-700', label: status || 'Sắp tới' };
         }
     };
 
     const style = getSessionStyle(session.status);
-    const studentName = session.student?.fullname || session.studentName || 'Học viên';
+
+    // --- MAPPING DỮ LIỆU TỪ JSON ---
+    // Structure: session -> student -> client -> {fullname, email, avatar_url}
+    const clientInfo = session.student?.client || {};
+    const studentName = clientInfo.fullname || session.studentName || 'Học viên';
+    const studentEmail = clientInfo.email || '';
+    const avatarUrl = clientInfo.avatar_url;
+
+    // Xử lý URL ảnh
+    const displayAvatar = avatarUrl
+        ? (avatarUrl.startsWith('http') ? avatarUrl : `${SERVER_URL}${avatarUrl}`)
+        : null;
 
     return (
         <div className="flex gap-4 group mb-4">
@@ -287,9 +315,23 @@ const SessionCard = ({ session, onDelete }) => {
 
                 <div>
                     <h3 className="text-lg font-bold text-slate-800 mb-1 flex items-center gap-2">
-                        <User size={18} className="text-slate-400" />
+                        {displayAvatar ? (
+                            <img
+                                src={displayAvatar}
+                                alt={studentName}
+                                className="w-6 h-6 rounded-full object-cover border border-slate-100"
+                                onError={(e) => { e.target.style.display = 'none' }}
+                            />
+                        ) : (
+                            <User size={18} className="text-slate-400" />
+                        )}
                         {studentName}
                     </h3>
+
+                    {/* Hiển thị Email */}
+                    {studentEmail && (
+                        <p className="text-xs text-slate-400 ml-8 mb-2 truncate max-w-[200px]">{studentEmail}</p>
+                    )}
 
                     {session.notes && (
                         <div className="mt-2 p-2 bg-yellow-50 rounded-lg border border-yellow-100 flex gap-2 items-start">

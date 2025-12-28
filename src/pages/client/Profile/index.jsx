@@ -23,7 +23,8 @@ import {
     Camera,
     ZoomIn,
     ZoomOut,
-    Move
+    Move,
+    Clock
 } from 'lucide-react';
 
 // --- HELPER: API CONFIG ---
@@ -225,13 +226,12 @@ const OrderPackageItem = ({ detail, order, onOpenReview, refreshTrigger }) => {
     );
 };
 
-// --- AVATAR EDITOR COMPONENT (ĐÃ FIX TỶ LỆ ĐỒNG BỘ) ---
+// --- AVATAR EDITOR COMPONENT ---
 const AvatarEditor = ({ imageSrc, onSave, onCancel }) => {
     const [scale, setScale] = useState(1);
     const [position, setPosition] = useState({ x: 0, y: 0 });
     const [isDragging, setIsDragging] = useState(false);
     const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-    // State quan trọng: Lưu kích thước hiển thị chính xác để khớp với Canvas
     const [previewDimensions, setPreviewDimensions] = useState({ width: 0, height: 0 });
 
     const imageRef = useRef(null);
@@ -255,14 +255,10 @@ const AvatarEditor = ({ imageSrc, onSave, onCancel }) => {
         setIsDragging(false);
     };
 
-    // Logic tính toán kích thước hiển thị (Preview)
-    // Tính toán tỷ lệ 'cover' (phủ kín) dựa trên khung nhìn 256px
     const onImageLoad = (e) => {
         const img = e.target;
         const editorSize = 256;
-
         const ratio = Math.max(editorSize / img.naturalWidth, editorSize / img.naturalHeight);
-
         setPreviewDimensions({
             width: img.naturalWidth * ratio,
             height: img.naturalHeight * ratio
@@ -274,34 +270,28 @@ const AvatarEditor = ({ imageSrc, onSave, onCancel }) => {
         const ctx = canvas.getContext('2d');
         const img = imageRef.current;
 
-        const outputSize = 400; // Output server
+        const outputSize = 400;
         canvas.width = outputSize;
         canvas.height = outputSize;
 
         ctx.clearRect(0, 0, outputSize, outputSize);
-
-        // Tạo khung tròn
         ctx.beginPath();
-        ctx.arc(outputSize / 2, outputSize / 2, outputSize / 2, 0, 2 * Math.PI);
+        ctx.rect(0, 0, outputSize, outputSize);
         ctx.clip();
 
-        const editorSize = 256; // Kích thước khung nhìn UI
+        const editorSize = 256;
 
         ctx.save();
         ctx.translate(outputSize / 2, outputSize / 2);
 
-        // Logic tính toán tỷ lệ cho Canvas phải tương đương logic onImageLoad
         const ratio = Math.max(outputSize / img.naturalWidth, outputSize / img.naturalHeight);
         const width = img.naturalWidth * ratio * scale;
         const height = img.naturalHeight * ratio * scale;
 
-        // Map vị trí từ Editor (256px) sang Output (400px)
         const xOffset = position.x * (outputSize / editorSize);
         const yOffset = position.y * (outputSize / editorSize);
 
         ctx.translate(xOffset, yOffset);
-
-        // Vẽ ảnh căn giữa
         ctx.drawImage(img, -width / 2, -height / 2, width, height);
         ctx.restore();
 
@@ -325,7 +315,6 @@ const AvatarEditor = ({ imageSrc, onSave, onCancel }) => {
                     alt="Editor"
                     className="absolute max-w-none origin-center select-none pointer-events-none"
                     style={{
-                        // Sử dụng kích thước đã tính toán thay vì CSS mặc định để đảm bảo đồng bộ
                         width: previewDimensions.width ? `${previewDimensions.width}px` : 'auto',
                         height: previewDimensions.height ? `${previewDimensions.height}px` : 'auto',
                         transform: `translate(-50%, -50%) translate(${position.x}px, ${position.y}px) scale(${scale})`,
@@ -335,8 +324,6 @@ const AvatarEditor = ({ imageSrc, onSave, onCancel }) => {
                     draggable={false}
                 />
                 <div className="absolute inset-0 pointer-events-none border-2 border-white/20 rounded-full"></div>
-                {/* Tâm điểm hướng dẫn */}
-                <div className="absolute top-1/2 left-1/2 w-1 h-1 bg-red-500 rounded-full -translate-x-1/2 -translate-y-1/2 opacity-30 pointer-events-none"></div>
             </div>
 
             <div className="w-full space-y-2">
@@ -480,20 +467,29 @@ const CustomerProfile = ({ onBack }) => {
         }
     }, [activeTab, userData, refreshHistory]);
 
-    // --- 3. FETCH SCHEDULE ---
+    // --- 3. FETCH SCHEDULE (LỊCH TẬP) - ĐÃ CẬP NHẬT LOGIC ---
+    // API: GET /client/my-schedule/:id
     useEffect(() => {
         if (activeTab === 'schedule' && userData?._id) {
             const fetchSchedule = async () => {
                 setIsLoadingSchedule(true);
                 try {
                     const token = localStorage.getItem('tokenClient');
+                    // Gửi ID của client lên API như yêu cầu: /client/my-schedule/:id
                     const response = await fetch(`${API_URL}/my-schedule/${userData._id}`, {
                         method: 'GET',
                         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
                     });
                     const result = await response.json();
                     if (result.success) {
-                        setSchedules(result.data || []);
+                        // Sắp xếp lịch theo ngày giờ giảm dần (mới nhất lên đầu) hoặc tăng dần (sắp tới)
+                        // Ở đây ta sắp xếp tăng dần để thấy lịch sắp tới
+                        const sorted = (result.data || []).sort((a, b) => {
+                            const dateA = new Date(`${a.date}T${a.startTime}`);
+                            const dateB = new Date(`${b.date}T${b.startTime}`);
+                            return dateA - dateB;
+                        });
+                        setSchedules(sorted);
                     } else {
                         console.error("Lỗi lấy lịch tập:", result.message);
                     }
@@ -542,55 +538,11 @@ const CustomerProfile = ({ onBack }) => {
         }
     };
 
-    // --- 5. AVATAR UPLOAD ---
-    const handleAvatarClick = () => fileInputRef.current?.click();
-    const handleFileChange = (event) => {
-        const file = event.target.files[0];
-        if (file) {
-            if (!file.type.startsWith('image/')) {
-                notify("Vui lòng chỉ chọn file ảnh!", "error");
-                return;
-            }
-            setSelectedImageFile(URL.createObjectURL(file));
-            setShowAvatarEditor(true);
-            event.target.value = null;
-        }
-    };
-    const handleCropSave = async (base64Image) => {
-        setShowAvatarEditor(false);
-        URL.revokeObjectURL(selectedImageFile);
-        setSelectedImageFile(null);
-        try {
-            const res = await fetch(base64Image);
-            const blob = await res.blob();
-            const file = new File([blob], "avatar.jpg", { type: "image/jpeg" });
-            const formData = new FormData();
-            formData.append('avatar', file);
-            const token = localStorage.getItem('tokenClient');
-            const response = await fetch(`${API_URL}/update-avatar`, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` },
-                body: formData
-            });
-            const result = await response.json();
-            if (result.success) {
-                const newAvatarUrl = result.data.avatar_url;
-                setUserData(prev => ({ ...prev, avatar_url: newAvatarUrl }));
-                notify("Cập nhật ảnh đại diện thành công!", "success");
-            } else {
-                notify(result.message || "Lỗi cập nhật ảnh", "error");
-            }
-        } catch (err) {
-            notify("Lỗi khi gửi ảnh lên server", "error");
-        }
-    };
-    const handleCropCancel = () => {
-        setShowAvatarEditor(false);
-        if (selectedImageFile) {
-            URL.revokeObjectURL(selectedImageFile);
-            setSelectedImageFile(null);
-        }
-    };
+    // --- 5. AVATAR UPLOAD (DISABLED) ---
+    const handleAvatarClick = () => { /* Disabled */ };
+    const handleFileChange = (event) => { /* Disabled */ };
+    const handleCropSave = async (base64Image) => { /* Disabled */ };
+    const handleCropCancel = () => { /* Disabled */ };
 
     // --- 6. REVIEW ---
     const openReviewModal = (packageId, packageName) => {
@@ -638,10 +590,10 @@ const CustomerProfile = ({ onBack }) => {
     return (
         <div className="bg-black min-h-screen text-gray-100 font-sans relative">
             {notification && <Toast message={notification.message} type={notification.type} onClose={() => setNotification(null)} />}
+            {/* Input file ẩn vẫn giữ nhưng không trigger */}
             <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
-            <Modal isOpen={showAvatarEditor} title="Căn chỉnh ảnh đại diện" onClose={handleCropCancel} maxWidth="max-w-md">
-                {selectedImageFile && <AvatarEditor imageSrc={selectedImageFile} onSave={handleCropSave} onCancel={handleCropCancel} />}
-            </Modal>
+
+            {/* Modal Review */}
             <Modal isOpen={showReviewModal} title="Đánh giá gói tập" onClose={() => setShowReviewModal(false)}>
                 <div className="space-y-4">
                     <p className="text-sm text-gray-300">Bạn cảm thấy thế nào về gói tập <strong className="text-red-500">{reviewData.packageName}</strong>?</p>
@@ -660,6 +612,8 @@ const CustomerProfile = ({ onBack }) => {
                     </div>
                 </div>
             </Modal>
+
+            {/* Modal Logout */}
             <Modal isOpen={showLogoutModal} title="Xác nhận đăng xuất" onClose={() => setShowLogoutModal(false)}>
                 <div className="space-y-4">
                     <p className="text-gray-300">Bạn có chắc chắn muốn đăng xuất khỏi tài khoản không?</p>
@@ -677,9 +631,9 @@ const CustomerProfile = ({ onBack }) => {
                         <div className="bg-gray-900 rounded-3xl p-6 border border-gray-800 shadow-2xl relative overflow-hidden group">
                             <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-r from-red-900 to-red-600 opacity-20"></div>
                             <div className="relative flex flex-col items-center">
-                                <div className="w-28 h-28 rounded-full border-4 border-gray-900 shadow-2xl overflow-hidden mb-4 relative z-10 cursor-pointer group-hover:border-red-600 transition-colors bg-gray-800" onClick={handleAvatarClick} title="Nhấn để đổi ảnh đại diện">
+                                {/* Avatar Read-only */}
+                                <div className="w-28 h-28 rounded-full border-4 border-gray-900 shadow-2xl overflow-hidden mb-4 relative z-10 cursor-default bg-gray-800" title="Ảnh đại diện">
                                     <img src={avatarLoadError ? "https://placehold.co/200x200?text=No+Avatar" : getAvatarSrc(userData.avatar_url)} alt="User" className="w-full h-full object-cover" onError={(e) => { if (e.target.src !== "https://placehold.co/200x200?text=No+Avatar") setAvatarLoadError(true); }} onLoad={(e) => { if (e.target.src !== "https://placehold.co/200x200?text=No+Avatar") setAvatarLoadError(false); }} />
-                                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Camera size={24} className="text-white" /></div>
                                 </div>
                                 <h2 className="text-2xl font-black text-white mb-1 text-center">{userData.fullname || "Chưa cập nhật tên"}</h2>
                                 <div className="flex items-center gap-2 mb-4"><span className="px-3 py-1 rounded-full bg-gradient-to-r from-yellow-600 to-yellow-400 text-black text-[10px] font-black uppercase tracking-wider shadow-lg">{userData.status === 1 ? 'Active Member' : 'Inactive'}</span><span className="text-xs text-gray-500 truncate max-w-[150px]">ID: {userData._id ? userData._id.substring(0, 8) : '...'}...</span></div>
@@ -703,6 +657,7 @@ const CustomerProfile = ({ onBack }) => {
                     </div>
                     <div className="lg:col-span-8">
                         <div className="bg-gray-900 rounded-3xl min-h-[600px] border border-gray-800 p-6 md:p-8 shadow-2xl">
+                            {/* TAB: OVERVIEW */}
                             {activeTab === 'overview' && (
                                 <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                                     <h3 className="text-2xl font-black uppercase text-white flex items-center gap-3"><Activity className="text-red-600" /> Tổng quan</h3>
@@ -729,6 +684,74 @@ const CustomerProfile = ({ onBack }) => {
                                     </div>
                                 </div>
                             )}
+
+                            {/* TAB: SCHEDULE (LỊCH TẬP) - Đã cập nhật */}
+                            {activeTab === 'schedule' && (
+                                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                    <h3 className="text-2xl font-black uppercase text-white flex items-center gap-3"><Calendar className="text-red-600" /> Lịch tập sắp tới</h3>
+                                    {isLoadingSchedule ? (
+                                        <div className="flex justify-center py-10">
+                                            <Loader2 className="animate-spin text-red-600" size={32} />
+                                        </div>
+                                    ) : (
+                                        <>
+                                            {schedules.length > 0 ? (
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    {schedules.map((schedule) => (
+                                                        <div key={schedule._id} className="bg-gray-800 p-5 rounded-2xl border border-gray-700 relative overflow-hidden flex flex-col justify-between">
+                                                            <div className="absolute top-0 right-0 p-3">
+                                                                {/* Hiển thị ngày tập */}
+                                                                <span className="bg-red-600 text-white text-[10px] font-bold px-2 py-1 rounded uppercase">
+                                                                    {schedule.date ? formatDate(schedule.date) : "N/A"}
+                                                                </span>
+                                                            </div>
+                                                            <div>
+                                                                <h4 className="font-bold text-white text-lg mb-1 flex items-center gap-2">
+                                                                    <User size={18} className="text-blue-500" />
+                                                                    {/* Vì đây là lịch của client, nên hiển thị tên Coach nếu có, hoặc mặc định PT */}
+                                                                    {schedule.coach?.fullname || "HLV Cá Nhân"}
+                                                                </h4>
+                                                                <div className="text-red-500 text-sm font-bold mb-4 flex items-center gap-2">
+                                                                    <Clock size={16} />
+                                                                    {schedule.startTime} - {schedule.endTime}
+                                                                </div>
+
+                                                                <div className="space-y-2 text-sm text-gray-400">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <MapPin size={14} />
+                                                                        Phòng tập Gym
+                                                                    </div>
+                                                                    <div className={`flex items-center gap-2 ${schedule.status === 'scheduled' ? 'text-green-500' : 'text-gray-500'}`}>
+                                                                        <Check size={14} />
+                                                                        {schedule.status === 'scheduled' ? 'Đã đặt lịch' : 'Hoàn thành'}
+                                                                    </div>
+                                                                    {schedule.notes && (
+                                                                        <div className="p-2 bg-gray-700/50 rounded-lg text-xs italic border-l-2 border-yellow-500 text-gray-300 mt-2">
+                                                                            "{schedule.notes}"
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Nút hủy lịch (có thể disable nếu quá gần giờ tập) */}
+                                                            <button className="w-full mt-4 py-2 border border-gray-600 rounded-lg text-xs font-bold uppercase hover:bg-white hover:text-black transition-colors">
+                                                                Hủy lịch
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <div className="text-center py-10 text-gray-500">
+                                                    <Calendar size={48} className="mx-auto mb-4 opacity-50" />
+                                                    <p>Bạn chưa đăng ký lịch tập nào.</p>
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* TAB: HISTORY (LỊCH SỬ GÓI TẬP) */}
                             {activeTab === 'history' && (
                                 <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                                     <h3 className="text-2xl font-black uppercase text-white flex items-center gap-3"><History className="text-red-600" /> Lịch sử giao dịch</h3>
@@ -737,7 +760,13 @@ const CustomerProfile = ({ onBack }) => {
                                             {bookingHistory.length > 0 ? bookingHistory.map((order) => (
                                                 <div key={order._id} className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden mb-4">
                                                     <div className="p-4 bg-gray-800/50 flex flex-wrap justify-between items-center gap-4 border-b border-gray-800">
-                                                        <div className="flex items-center gap-3"><div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${order.status === ORDER_STATUS.COMPLETED ? 'bg-green-500/10 text-green-500 border-green-500/20' : order.status === ORDER_STATUS.PENDING ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'}`}>{order.status === ORDER_STATUS.COMPLETED ? 'Đang tập' : order.status === ORDER_STATUS.PENDING ? 'Chờ duyệt' : 'Đã hủy'}</div><span className="text-xs text-gray-500">#{order._id.substring(0, 8)}</span><span className="text-xs text-gray-500">• {formatDate(order.createdAt || order.orderDate)}</span></div>
+                                                        <div className="flex items-center gap-3">
+                                                            <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${order.status === ORDER_STATUS.COMPLETED ? 'bg-green-500/10 text-green-500 border-green-500/20' : order.status === ORDER_STATUS.PENDING ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'}`}>
+                                                                {order.status === ORDER_STATUS.COMPLETED ? 'Đang tập' : order.status === ORDER_STATUS.PENDING ? 'Chờ duyệt' : 'Đã hủy'}
+                                                            </div>
+                                                            <span className="text-xs text-gray-500">#{order._id.substring(0, 8)}</span>
+                                                            <span className="text-xs text-gray-500">• {formatDate(order.createdAt || order.orderDate)}</span>
+                                                        </div>
                                                         <div className="font-black text-white">{formatCurrency(order.totalAmount)}</div>
                                                     </div>
                                                     <div className="p-4 space-y-3">
@@ -757,49 +786,8 @@ const CustomerProfile = ({ onBack }) => {
                                     )}
                                 </div>
                             )}
-                            {activeTab === 'schedule' && (
-                                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                    <h3 className="text-2xl font-black uppercase text-white flex items-center gap-3"><Calendar className="text-red-600" /> Lịch tập sắp tới</h3>
-                                    {isLoadingSchedule ? (
-                                        <div className="flex justify-center py-10">
-                                            <Loader2 className="animate-spin text-red-600" size={32} />
-                                        </div>
-                                    ) : (
-                                        <>
-                                            {schedules.length > 0 ? (
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                    {schedules.map((schedule) => (
-                                                        <div key={schedule._id} className="bg-gray-800 p-5 rounded-2xl border border-gray-700 relative overflow-hidden">
-                                                            <div className="absolute top-0 right-0 p-3">
-                                                                <span className="bg-red-600 text-white text-[10px] font-bold px-2 py-1 rounded uppercase">
-                                                                    {schedule.class?.date ? formatDate(schedule.class.date) : "N/A"}
-                                                                </span>
-                                                            </div>
-                                                            <h4 className="font-bold text-white text-lg mb-1">{schedule.class?.name || "Lớp học không tên"}</h4>
-                                                            <div className="text-red-500 text-sm font-bold mb-4">{schedule.class?.time || "Chưa có giờ"}</div>
 
-                                                            <div className="space-y-2 text-sm text-gray-400">
-                                                                <div className="flex items-center gap-2"><User size={14} /> {schedule.class?.instructor || "Chưa cập nhật"}</div>
-                                                                <div className="flex items-center gap-2"><MapPin size={14} /> {schedule.class?.room || "Chưa cập nhật"}</div>
-                                                            </div>
-
-                                                            <button className="w-full mt-4 py-2 border border-gray-600 rounded-lg text-xs font-bold uppercase hover:bg-white hover:text-black transition-colors">
-                                                                Hủy lịch
-                                                            </button>
-                                                        </div>
-                                                    ))}
-                                                    <div className="bg-gray-800/50 border-2 border-dashed border-gray-700 rounded-2xl flex flex-col items-center justify-center p-6 text-gray-500 hover:border-red-500 hover:text-red-500 transition-colors cursor-pointer min-h-[200px]"><Calendar size={32} className="mb-2" /><span className="font-bold uppercase text-sm">Đăng ký lớp mới</span></div>
-                                                </div>
-                                            ) : (
-                                                <div className="text-center py-10 text-gray-500">
-                                                    <Calendar size={48} className="mx-auto mb-4 opacity-50" />
-                                                    <p>Bạn chưa đăng ký lịch tập nào.</p>
-                                                </div>
-                                            )}
-                                        </>
-                                    )}
-                                </div>
-                            )}
+                            {/* TAB: SETTINGS */}
                             {activeTab === 'settings' && (
                                 <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                                     <h3 className="text-2xl font-black uppercase text-white flex items-center gap-3"><Settings className="text-red-600" /> Cài đặt tài khoản</h3>
